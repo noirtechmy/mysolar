@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --blue:#006C9C; --blue-deep:#004A6B; --blue-night:#0A2B38; --tint:#EDF4F8;
@@ -28,21 +29,17 @@ button{font-family:inherit}
 .mono{font-family:var(--mono)}
 
 .demoflag{background:var(--blue-night);color:#F0B429;font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;text-align:center;padding:7px}
-
-/* shell */
 .topnav{background:var(--blue-night);color:#fff}
 .topnav .in{max-width:1240px;margin:0 auto;padding:12px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .brand{display:flex;align-items:baseline;gap:9px;font-weight:700;font-size:1.06rem;letter-spacing:-.02em}
 .brand span{font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:#7FB4C8;font-weight:500}
-.navbtns{display:flex;gap:8px}
-.navbtns a{color:#BBD8E4;text-decoration:none;font-size:.88rem;font-weight:600;padding:7px 13px;border-radius:4px}
-.navbtns a:hover{background:rgba(255,255,255,.1);color:#fff}
+.navbtns{display:flex;gap:8px;align-items:center}
+.navbtns a,.navbtns button{color:#BBD8E4;text-decoration:none;font-size:.88rem;font-weight:600;padding:7px 13px;border-radius:4px;background:none;border:0;cursor:pointer}
+.navbtns a:hover,.navbtns button:hover{background:rgba(255,255,255,.1);color:#fff}
 .navbtns a.on{background:var(--blue);color:#fff}
 
 .page{max-width:1240px;margin:0 auto;padding:26px 22px 60px}
 .narrow{max-width:620px}
-
-/* generic */
 .card{background:var(--paper);border:1px solid var(--line);border-radius:7px}
 .card-pad{padding:22px}
 label{display:block;font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--grey);margin-bottom:6px}
@@ -55,14 +52,14 @@ select{font-family:var(--sans)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid transparent;border-radius:5px;padding:11px 20px;font-size:.93rem;font-weight:600;cursor:pointer;text-decoration:none;transition:.14s}
 .btn-p{background:var(--blue);color:#fff}
 .btn-p:hover{background:var(--blue-deep)}
+.btn-p[disabled]{opacity:.6;cursor:wait}
 .btn-s{background:#fff;border-color:var(--line);color:var(--ink)}
 .btn-s:hover{border-color:var(--blue);color:var(--blue)}
 .btn-full{width:100%}
 .err{background:var(--red-bg);color:var(--red);border:1px solid #F0C7C2;border-radius:5px;padding:11px 13px;font-size:.9rem;margin-bottom:14px}
-.muted{color:var(--grey)}
-.tiny{font-size:.85rem}
+.ok{background:var(--green-bg);color:var(--green);border:1px solid #BFE3D1;border-radius:5px;padding:11px 13px;font-size:.9rem;margin-bottom:14px}
+.muted{color:var(--grey)} .tiny{font-size:.85rem}
 
-/* status pills */
 .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:4px 9px;border-radius:3px;white-space:nowrap}
 .pill.g{background:var(--green-bg);color:var(--green)}
 .pill.w{background:var(--tint);color:var(--blue-deep)}
@@ -70,7 +67,6 @@ select{font-family:var(--sans)}
 .pill.n{background:#EEF1F3;color:var(--grey)}
 .pill.a{background:var(--amber-bg);color:var(--amber)}
 
-/* customer view */
 .hero-c{background:linear-gradient(155deg,var(--blue) 0%,var(--blue-deep) 100%);color:#fff;padding:40px 22px 46px}
 .hero-c .in{max-width:620px;margin:0 auto}
 .hero-c h1{font-size:1.85rem;color:#fff}
@@ -91,7 +87,6 @@ dl.kv dd{margin:0;font-family:var(--mono);font-size:.89rem;text-align:right}
 .svc-item:last-child{border-bottom:0}
 .svc-item .d{font-family:var(--mono);font-size:.82rem;color:var(--grey);white-space:nowrap;min-width:92px}
 
-/* admin */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
 @media(max-width:780px){.stats{grid-template-columns:repeat(2,1fr)}}
 .stat{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:15px 17px}
@@ -114,11 +109,12 @@ tbody tr:hover{background:var(--tint)}
 .sec-h{padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700;font-size:.95rem;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .claim{padding:13px 18px;border-bottom:1px solid var(--line);font-size:.9rem}
 .claim:last-child{border-bottom:0}
+.spin{padding:50px 20px;text-align:center;color:var(--grey);font-family:var(--mono);font-size:.85rem;letter-spacing:.1em;text-transform:uppercase}
 </style>
 </head>
 <body>
 
-<div class="demoflag">Prototype · demo data only · built by NoirTech for MySolar</div>
+<div class="demoflag" id="flag">MySolar Warranty Registry</div>
 
 <div class="topnav">
   <div class="in">
@@ -127,12 +123,13 @@ tbody tr:hover{background:var(--tint)}
   </div>
 </div>
 
-<div id="app"></div>
+<div id="app"><div class="spin">Loading…</div></div>
 
 <script>
 /* ============================================================================
-   1. PRODUCT DEFINITIONS
-   Guarantee and warranty terms taken from MySolar's published product page.
+   PRODUCT DEFINITIONS
+   Kept in the browser as well as the database so the coverage bar can be
+   drawn without an extra round trip.
    ========================================================================== */
 const MODELS = {
   "MY40-S3": { name:"MySolar MY40 Series 3", litres:180, gallons:40, pax:"Up to 4",
@@ -144,200 +141,146 @@ const MODELS = {
 };
 
 /* ============================================================================
-   2. DATA LAYER  <<<< THE ONLY BLOCK THAT CHANGES WHEN YOU MIGRATE
-   Every function is async and returns plain objects. To move to Supabase,
-   Firebase, or a REST API, rewrite the bodies below and touch nothing else.
+   DATA LAYER — Supabase
+   The anon key belongs in the browser. It is safe ONLY because Row Level
+   Security is switched on. Never paste the service_role key here.
    ========================================================================== */
-const SEED = [
-  { id:1,  warrantyNo:"MYS-2022-0147", serial:"MY60S3-22-00147", model:"MY60-S3",
-    name:"Tan Wei Ming", phone:"012-345 6789", email:"weiming.tan@example.com",
-    address:"12, Jalan SS21/35, Damansara Utama", area:"Petaling Jaya",
-    installDate:"2022-03-14", channel:"direct", dealer:"", installer:"Ah Seng crew",
-    service:[{date:"2024-04-02",type:"Annual service",tech:"Ah Seng",note:"Panel cleaned, anode checked."},
-             {date:"2026-02-02",type:"Annual service",tech:"Ah Seng",note:"All good. Relief valve tested."}],
-    claims:[] },
+const SUPABASE_URL      = "https://kvyyubhveodjqbqxwjuz.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2eXl1Ymh2ZW9kanFicXh3anV6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NDU5NDMsImV4cCI6MjEwMzMyMTk0M30.dLbHBTncz6UG4i9YhqpLe35dzJhPXZ3Xmpn5Ybd0qms";
 
-  { id:2,  warrantyNo:"MYS-2021-0093", serial:"MY60S1-21-00093", model:"MY60-S1",
-    name:"Nurul Aisyah binti Rahman", phone:"019-772 4410", email:"nurul.aisyah@example.com",
-    address:"38, Jalan Puteri 2/5, Bandar Puteri", area:"Puchong",
-    installDate:"2021-08-30", channel:"dealer", dealer:"Solar Haus Sdn Bhd", installer:"Dealer crew",
-    service:[{date:"2023-09-11",type:"Annual service",tech:"Ravi",note:"Sediment flush."}],
-    claims:[{date:"2024-06-18",issue:"Backup heater not heating during rainy week.",status:"resolved",
-             resolution:"Thermowatt element replaced under warranty. No charge."}] },
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  { id:3,  warrantyNo:"MYS-2019-0021", serial:"MY40S3-19-00021", model:"MY40-S3",
-    name:"Lim Chee Keong", phone:"016-228 9031", email:"cklim@example.com",
-    address:"7, Lorong Bukit Pantai 3", area:"Bangsar",
-    installDate:"2019-01-22", channel:"dealer", dealer:"BWS Solar Technology", installer:"Dealer crew",
-    service:[], claims:[] },
-
-  { id:4,  warrantyNo:"MYS-2024-0388", serial:"MY60S3-24-00388", model:"MY60-S3",
-    name:"Sivakumar a/l Raju", phone:"012-908 5512", email:"siva.raju@example.com",
-    address:"22, Jalan Setia Impian U13/18", area:"Shah Alam",
-    installDate:"2024-11-05", channel:"direct", dealer:"", installer:"Louis / install team",
-    service:[], claims:[] },
-
-  { id:5,  warrantyNo:"MYS-2016-0004", serial:"MY60S1-16-00004", model:"MY60-S1",
-    name:"Cheah Poh Lin", phone:"017-334 2288", email:"plcheah@example.com",
-    address:"5, Jalan Kenari 8, Bandar Puchong Jaya", area:"Puchong",
-    installDate:"2016-05-19", channel:"dealer", dealer:"Hydro One Marketing", installer:"Dealer crew",
-    service:[{date:"2020-06-01",type:"Repair",tech:"Ravi",note:"Relief valve replaced, chargeable."}],
-    claims:[{date:"2026-01-09",issue:"Customer reports slow heating.",status:"open",
-             resolution:"Site visit scheduled. Unit is past warranty — quote for panel service issued."}] },
-
-  { id:6,  warrantyNo:"MYS-2023-0256", serial:"MY40S3-23-00256", model:"MY40-S3",
-    name:"Farah Iman binti Yusof", phone:"013-660 7745", email:"farah.iman@example.com",
-    address:"90, Jalan Bukit Indah 5, Taman Bukit Indah", area:"Ampang",
-    installDate:"2023-07-21", channel:"direct", dealer:"", installer:"Ah Seng crew",
-    service:[{date:"2025-08-14",type:"Annual service",tech:"Ah Seng",note:"Panel glass cleaned."}],
-    claims:[] },
-
-  { id:7,  warrantyNo:"MYS-2020-0061", serial:"MY60S3-20-00061", model:"MY60-S3",
-    name:"Ganesh Nair", phone:"011-2288 4499", email:"ganesh.nair@example.com",
-    address:"14A, Jalan Kelab Golf 13/2", area:"Klang",
-    installDate:"2020-02-08", channel:"dealer", dealer:"Solar Flow Enterprise", installer:"Dealer crew",
-    service:[{date:"2022-03-02",type:"Annual service",tech:"Ravi",note:"Routine."},
-             {date:"2025-03-30",type:"Annual service",tech:"Ravi",note:"Riser tube joint resealed."}],
-    claims:[] },
-
-  { id:8,  warrantyNo:"MYS-2025-0442", serial:"MY60S1-25-00442", model:"MY60-S1",
-    name:"Wong Su Yin", phone:"018-441 2033", email:"suyin.wong@example.com",
-    address:"3, Persiaran Tropicana 5", area:"Petaling Jaya",
-    installDate:"2025-06-12", channel:"direct", dealer:"", installer:"Louis / install team",
-    service:[], claims:[] },
-
-  { id:9,  warrantyNo:"MYS-2018-0012", serial:"MY40S3-18-00012", model:"MY40-S3",
-    name:"Abdul Halim bin Osman", phone:"012-773 0091", email:"halim.osman@example.com",
-    address:"66, Jalan Seri Kembangan 4", area:"Seri Kembangan",
-    installDate:"2018-10-03", channel:"dealer", dealer:"Smart Solar Marketing", installer:"Dealer crew",
-    service:[], claims:[] },
-
-  { id:10, warrantyNo:"MYS-2026-0501", serial:"MY60S3-26-00501", model:"MY60-S3",
-    name:"Chong Kar Hoe", phone:"014-882 5510", email:"khchong@example.com",
-    address:"29, Jalan Bandar Tasik Selatan 2", area:"Cheras",
-    installDate:"2026-04-18", channel:"direct", dealer:"", installer:"Ah Seng crew",
-    service:[], claims:[] },
-
-  { id:11, warrantyNo:"MYS-2023-0301", serial:"MY60S1-23-00301", model:"MY60-S1",
-    name:"Devi Suppiah", phone:"016-559 8820", email:"devi.s@example.com",
-    address:"11, Jalan Rasah Jaya 7", area:"Seremban",
-    installDate:"2023-12-01", channel:"dealer", dealer:"Solar Haus Sdn Bhd", installer:"Dealer crew",
-    service:[], claims:[{date:"2025-05-22",issue:"Tank weeping at the seam.",status:"resolved",
-             resolution:"Tank replaced under 9-year warranty. Old unit returned to factory."}] },
-
-  { id:12, warrantyNo:"MYS-2014-0002", serial:"MY40S3-14-00002", model:"MY40-S3",
-    name:"Ooi Beng Huat", phone:"012-201 7766", email:"bhooi@example.com",
-    address:"41, Jalan Gasing Indah 2", area:"Petaling Jaya",
-    installDate:"2014-09-15", channel:"dealer", dealer:"BWS Solar Technology", installer:"Dealer crew",
-    service:[{date:"2019-10-10",type:"Repair",tech:"Ah Seng",note:"Chargeable — element and thermostat."}],
-    claims:[] }
-];
+function rowFromView(v, service = [], claims = []) {
+  return {
+    id: v.id, warrantyNo: v.warranty_no, serial: v.serial_no || "",
+    model: v.model_code, name: v.customer_name, phone: v.customer_phone,
+    email: v.customer_email || "", address: v.address || "", area: v.customer_area || "",
+    installDate: v.install_date, channel: v.channel,
+    dealer: v.dealer_name || "", installer: v.installer || "",
+    service: service.map(s => ({ date:s.visit_date, type:s.visit_type,
+                                 tech:s.technician || "", note:s.notes || "" })),
+    claims:  claims.map(c => ({ date:c.raised_on, issue:c.issue,
+                                status:c.status, resolution:c.resolution || "" }))
+  };
+}
 
 const DataSource = {
-  _rows: SEED.map(r => ({...r})),
-
   async listWarranties(){
-    return this._rows.map(r => ({...r}));
+    const { data: rows, error } = await sb.from("v_installations")
+      .select("*").order("install_date", { ascending:false });
+    if (error) throw error;
+    const { data: open } = await sb.from("claims")
+      .select("installation_id, raised_on, issue, status, resolution")
+      .in("status", ["open","in_progress"]);
+    const by = {};
+    (open || []).forEach(c => { (by[c.installation_id] ||= []).push(c); });
+    return rows.map(v => rowFromView(v, [], by[v.id] || []));
   },
 
   async getById(id){
-    const r = this._rows.find(x => x.id === Number(id));
-    return r ? {...r} : null;
+    const { data: v, error } = await sb.from("v_installations")
+      .select("*").eq("id", id).single();
+    if (error || !v) return null;
+    const [{ data: svc }, { data: cl }] = await Promise.all([
+      sb.from("service_visits").select("*").eq("installation_id", id).order("visit_date"),
+      sb.from("claims").select("*").eq("installation_id", id).order("raised_on")
+    ]);
+    return rowFromView(v, svc || [], cl || []);
   },
 
-  /* Customer-facing lookup.
-     Requires warranty number AND matching phone so a guessed number
-     can't expose someone else's name, address and phone. */
   async findForCustomer(warrantyNo, phone){
-    const key  = String(warrantyNo).trim().toUpperCase().replace(/\s+/g,"");
-    const dial = digits(phone);
-    const row = this._rows.find(r => r.warrantyNo.toUpperCase().replace(/\s+/g,"") === key);
-    if(!row) return { ok:false, reason:"notfound" };
-    if(dial.length < 4 || !digits(row.phone).endsWith(dial.slice(-8)) &&
-       !digits(row.phone).endsWith(dial.slice(-4))) return { ok:false, reason:"mismatch" };
-    return { ok:true, row:{...row} };
+    const args = { p_warranty_no:String(warrantyNo).trim(), p_phone:String(phone).trim() };
+    const { data, error } = await sb.rpc("lookup_warranty", args);
+    if (error) throw error;
+    if (!data || data.length === 0) return { ok:false, reason:"notfound" };
+    const v = data[0];
+    const { data: hist } = await sb.rpc("lookup_service_history", args);
+    return { ok:true, row:{
+      id:null, warrantyNo:v.warranty_no, serial:v.serial_no || "", model:v.model_code,
+      name:v.customer_name, phone:"", email:"", address:"", area:"",
+      installDate:v.install_date, channel:"", dealer:"", installer:"",
+      service:(hist || []).map(s => ({ date:s.visit_date, type:s.visit_type, tech:"", note:s.notes || "" })),
+      claims:[]
+    }};
   },
 
-  async createWarranty(payload){
-    const id = Math.max(0, ...this._rows.map(r => r.id)) + 1;
-    const yr = new Date(payload.installDate).getFullYear();
-    const seq = String(600 + id).padStart(4,"0");
-    const row = {
-      id,
-      warrantyNo: `MYS-${yr}-${seq}`,
-      serial: payload.serial || `${payload.model.replace("-","")}-${String(yr).slice(2)}-${seq}`,
-      model: payload.model, name: payload.name, phone: payload.phone,
-      email: payload.email || "", address: payload.address || "", area: payload.area || "",
-      installDate: payload.installDate,
-      channel: payload.channel, dealer: payload.dealer || "",
-      installer: payload.installer || "", service: [], claims: []
-    };
-    this._rows.push(row);
-    return {...row};
+  async createWarranty(p){
+    const { data, error } = await sb.rpc("register_installation", {
+      p_name:p.name, p_phone:p.phone, p_email:p.email || null,
+      p_address:p.address || null, p_area:p.area || null,
+      p_model_code:p.model, p_serial_no:p.serial || null,
+      p_install_date:p.installDate, p_channel:p.channel,
+      p_dealer_name:p.dealer || null, p_installer:p.installer || null
+    });
+    if (error) throw error;
+    return await this.getById(data);
   },
 
   async addServiceVisit(id, visit){
-    const r = this._rows.find(x => x.id === Number(id));
-    if(!r) return null;
-    r.service.push(visit);
-    r.service.sort((a,b) => a.date.localeCompare(b.date));
-    return {...r};
-  }
+    const { error } = await sb.from("service_visits").insert({
+      installation_id:id, visit_date:visit.date, visit_type:visit.type,
+      technician:visit.tech || null, notes:visit.note || null
+    });
+    if (error) throw error;
+    return await this.getById(id);
+  },
+
+  async signIn(email, password){
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) return { ok:false, message:error.message };
+    return { ok:true, user:data.user };
+  },
+  async signOut(){ await sb.auth.signOut(); },
+  async currentUser(){ const { data } = await sb.auth.getUser(); return data.user || null; }
 };
 /* ==================== END OF DATA LAYER ==================== */
 
 
 /* ---------- helpers ---------- */
-const $  = s => document.querySelector(s);
+const $ = s => document.querySelector(s);
 const digits = s => String(s||"").replace(/\D/g,"");
 const esc = s => String(s??"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-
-function addYears(iso, n){
-  const d = new Date(iso + "T00:00:00");
-  d.setFullYear(d.getFullYear() + n);
-  return d;
-}
-function fmt(d){
-  const dt = (typeof d === "string") ? new Date(d + "T00:00:00") : d;
-  return dt.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
-}
+function addYears(iso,n){ const d=new Date(iso+"T00:00:00"); d.setFullYear(d.getFullYear()+n); return d; }
+function fmt(d){ const dt=(typeof d==="string")?new Date(d+"T00:00:00"):d;
+  return dt.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}); }
 function daysBetween(a,b){ return Math.round((b-a)/86400000); }
 
-/* The single source of truth for warranty status. */
 function coverage(row){
   const m = MODELS[row.model];
-  const start = new Date(row.installDate + "T00:00:00");
-  const gEnd  = addYears(row.installDate, m.guaranteeYears);
-  const wEnd  = addYears(row.installDate, m.warrantyYears);
-  const now   = new Date();
-  let state, label, cls;
-  if(now < gEnd){ state="guarantee"; label="Under guarantee"; cls="g"; }
-  else if(now < wEnd){ state="warranty"; label="Under tank warranty"; cls="w"; }
+  const start = new Date(row.installDate+"T00:00:00");
+  const gEnd = addYears(row.installDate, m.guaranteeYears);
+  const wEnd = addYears(row.installDate, m.warrantyYears);
+  const now = new Date();
+  let state,label,cls;
+  if(now<gEnd){ state="guarantee"; label="Under guarantee"; cls="g"; }
+  else if(now<wEnd){ state="warranty"; label="Under tank warranty"; cls="w"; }
   else { state="expired"; label="Expired"; cls="x"; }
-  const total = daysBetween(start, wEnd);
-  const gone  = Math.min(Math.max(daysBetween(start, now),0), total);
-  return {
-    state, label, cls, gEnd, wEnd, model:m,
-    pctElapsed: Math.round(gone/total*100),
-    pctGuarantee: Math.round(daysBetween(start,gEnd)/total*100),
-    daysLeft: Math.max(daysBetween(now,wEnd),0)
-  };
+  const total = daysBetween(start,wEnd);
+  const gone = Math.min(Math.max(daysBetween(start,now),0),total);
+  return { state,label,cls,gEnd,wEnd,model:m,
+    pctElapsed:Math.round(gone/total*100),
+    pctGuarantee:Math.round(daysBetween(start,gEnd)/total*100),
+    daysLeft:Math.max(daysBetween(now,wEnd),0) };
 }
-function pill(c){ return `<span class="pill ${c.cls}">${c.label}</span>`; }
+const pill = c => `<span class="pill ${c.cls}">${c.label}</span>`;
 
-/* ---------- routing ---------- */
-let SESSION = false;
-function route(){ return (location.hash || "#/check").split("?")[0]; }
+/* ---------- state ---------- */
+let USER = null;
+let FILTER = { q:"", status:"all", channel:"all" };
+const route = () => (location.hash || "#/check").split("?")[0];
 window.addEventListener("hashchange", render);
 
 function nav(){
   const r = route();
   $("#nav").innerHTML = `
     <a href="#/check" class="${r==="#/check"?"on":""}">Check a warranty</a>
-    <a href="#/admin" class="${r.startsWith("#/admin")?"on":""}">Staff</a>`;
+    <a href="#/admin" class="${r.startsWith("#/admin")?"on":""}">Staff</a>
+    ${USER ? `<button id="outBtn">Sign out</button>` : ""}`;
+  const o = $("#outBtn");
+  if(o) o.onclick = async () => { await DataSource.signOut(); USER=null; location.hash="#/check"; render(); };
 }
 
-/* ---------- customer view ---------- */
+/* ---------- customer ---------- */
 function viewCheck(){
   return `
   <div class="hero-c"><div class="in">
@@ -346,43 +289,37 @@ function viewCheck(){
   </div></div>
   <div class="page"><div class="lookup-card card card-pad">
     <div id="lkErr"></div>
-    <div class="field">
-      <label for="wn">Warranty number</label>
-      <input id="wn" placeholder="MYS-2022-0147" autocomplete="off">
-    </div>
-    <div class="field">
-      <label for="pn">Phone number</label>
-      <input id="pn" placeholder="012-345 6789" autocomplete="off">
-    </div>
+    <div class="field"><label for="wn">Warranty number</label>
+      <input id="wn" placeholder="MYS-2022-0147" autocomplete="off"></div>
+    <div class="field"><label for="pn">Phone number</label>
+      <input id="pn" placeholder="012-345 6789" autocomplete="off"></div>
     <button class="btn btn-p btn-full" id="lkGo">Check my warranty</button>
     <p class="tiny muted" style="margin:14px 0 0">
-      Your warranty number is on the plate at the end of the tank and on your installation slip.
-      Can't find it? WhatsApp us on 012-318 0048 and we'll look it up.
-    </p>
-    <p class="tiny muted" style="margin:8px 0 0">
-      <b>Demo:</b> try <span class="mono">MYS-2022-0147</span> with <span class="mono">012-345 6789</span>,
-      or <span class="mono">MYS-2016-0004</span> with <span class="mono">017-334 2288</span>.
+      Your warranty number is on the plate at the end of the tank and on your
+      installation slip. Can't find it? WhatsApp 012-318 0048 and we'll look it up.
     </p>
   </div>
-  <div id="lkResult" style="max-width:620px;margin:18px auto 0"></div>
-  </div>`;
+  <div id="lkResult" style="max-width:620px;margin:18px auto 0"></div></div>`;
 }
 
 async function doLookup(){
-  const wn = $("#wn").value, pn = $("#pn").value;
-  const box = $("#lkResult"), errBox = $("#lkErr");
+  const btn = $("#lkGo"), box = $("#lkResult"), errBox = $("#lkErr");
   errBox.innerHTML = ""; box.innerHTML = "";
-  if(!wn.trim() || !pn.trim()){
+  if(!$("#wn").value.trim() || !$("#pn").value.trim()){
     errBox.innerHTML = `<div class="err">Please fill in both fields.</div>`; return;
   }
-  const res = await DataSource.findForCustomer(wn, pn);
-  if(!res.ok){
-    errBox.innerHTML = `<div class="err">${res.reason === "notfound"
-      ? "We couldn't find that warranty number. Please check it and try again."
-      : "That phone number doesn't match this warranty. Please use the number given at installation."}</div>`;
-    return;
+  btn.disabled = true; btn.textContent = "Checking…";
+  try{
+    const res = await DataSource.findForCustomer($("#wn").value, $("#pn").value);
+    if(!res.ok){
+      errBox.innerHTML = `<div class="err">${res.reason==="notfound"
+        ? "We couldn't find that warranty number. Please check it and try again."
+        : "That phone number doesn't match this warranty."}</div>`;
+    } else box.innerHTML = customerCard(res.row);
+  }catch(e){
+    errBox.innerHTML = `<div class="err">Couldn't reach the server. Please try again.<br><span class="tiny mono">${esc(e.message||e)}</span></div>`;
   }
-  box.innerHTML = customerCard(res.row);
+  btn.disabled = false; btn.textContent = "Check my warranty";
 }
 
 function customerCard(row){
@@ -391,135 +328,103 @@ function customerCard(row){
     ? row.service.slice().reverse().map(s =>
         `<div class="svc-item"><span class="d">${fmt(s.date)}</span><span>${esc(s.type)} — ${esc(s.note)}</span></div>`).join("")
     : `<p class="tiny muted" style="margin:0">No service visits recorded yet.</p>`;
-
   return `<div class="card">
     <div class="result-hd">
-      <div>
-        <div class="model">${esc(c.model.name)}</div>
-        <div class="tiny muted mono">${esc(row.warrantyNo)}</div>
-      </div>
+      <div><div class="model">${esc(c.model.name)}</div>
+        <div class="tiny muted mono">${esc(row.warrantyNo)}</div></div>
       ${pill(c)}
     </div>
-
     <div class="timeline">
       <div class="tiny muted">Coverage from ${fmt(row.installDate)}</div>
-      <div class="bar">
-        <span class="g" style="width:${c.pctGuarantee}%"></span>
-        <i style="width:${c.pctElapsed}%;opacity:.55"></i>
-      </div>
+      <div class="bar"><span class="g" style="width:${c.pctGuarantee}%"></span>
+        <i style="width:${c.pctElapsed}%;opacity:.55"></i></div>
       <div class="barlbl"><span>Installed</span><span>${c.state==="expired"
-        ? "Warranty ended " + fmt(c.wEnd)
-        : c.daysLeft + " days remaining"}</span></div>
+        ? "Warranty ended "+fmt(c.wEnd) : c.daysLeft+" days remaining"}</span></div>
     </div>
-
     <dl class="kv">
       <dt>Registered to</dt><dd>${esc(row.name)}</dd>
       <dt>Capacity</dt><dd>${c.model.litres} L · ${c.model.gallons} gal</dd>
-      <dt>Serial number</dt><dd>${esc(row.serial)}</dd>
+      <dt>Serial number</dt><dd>${esc(row.serial||"—")}</dd>
       <dt>Installed</dt><dd>${fmt(row.installDate)}</dd>
       <dt>Guarantee (${c.model.guaranteeYears} yr)</dt><dd>${fmt(c.gEnd)}</dd>
       <dt>Tank warranty (${c.model.warrantyYears} yr)</dt><dd>${fmt(c.wEnd)}</dd>
     </dl>
-
-    <div class="svc">
-      <h3 style="margin-bottom:9px">Service history</h3>
-      ${svc}
-    </div>
-
+    <div class="svc"><h3 style="margin-bottom:9px">Service history</h3>${svc}</div>
     <div class="card-pad" style="border-top:1px solid var(--line)">
       <a class="btn btn-p btn-full" target="_blank" rel="noopener"
-         href="https://wa.me/60123180048?text=${encodeURIComponent("Hi MySolar, I'd like to ask about warranty "+row.warrantyNo+".")}">
+        href="https://wa.me/60123180048?text=${encodeURIComponent("Hi MySolar, I'd like to ask about warranty "+row.warrantyNo+".")}">
         WhatsApp us about this system</a>
-    </div>
-  </div>`;
+    </div></div>`;
 }
 
-/* ---------- admin ---------- */
+/* ---------- staff sign in ---------- */
 function viewLogin(){
   return `<div class="page narrow"><div class="card card-pad">
     <h2>Staff sign in</h2>
-    <p class="tiny muted">Prototype only — real version uses proper accounts, one per staff member.</p>
+    <p class="tiny muted">Accounts are created in Supabase under Authentication → Users.</p>
     <div id="loginErr"></div>
-    <div class="field"><label for="pw">Passcode</label><input id="pw" type="password" placeholder="mysolar"></div>
+    <div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="username"></div>
+    <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div>
     <button class="btn btn-p btn-full" id="loginGo">Sign in</button>
-    <p class="tiny muted" style="margin:12px 0 0">Demo passcode: <span class="mono">mysolar</span></p>
   </div></div>`;
 }
 
-let FILTER = { q:"", status:"all", channel:"all" };
-
+/* ---------- registry ---------- */
 async function viewList(){
   const rows = await DataSource.listWarranties();
-  const withCov = rows.map(r => ({r, c:coverage(r)}));
-
+  const wc = rows.map(r => ({ r, c:coverage(r) }));
   const counts = {
-    total: withCov.length,
-    guarantee: withCov.filter(x => x.c.state==="guarantee").length,
-    warranty: withCov.filter(x => x.c.state==="warranty").length,
-    expired: withCov.filter(x => x.c.state==="expired").length,
-    openClaims: withCov.filter(x => x.r.claims.some(c => c.status==="open")).length
+    total: wc.length,
+    guarantee: wc.filter(x=>x.c.state==="guarantee").length,
+    warranty:  wc.filter(x=>x.c.state==="warranty").length,
+    openClaims:wc.filter(x=>x.r.claims.some(c=>c.status==="open"||c.status==="in_progress")).length
   };
-
   const q = FILTER.q.toLowerCase();
-  const shown = withCov.filter(({r,c}) => {
-    if(FILTER.status !== "all" && c.state !== FILTER.status) return false;
-    if(FILTER.channel !== "all" && r.channel !== FILTER.channel) return false;
+  const shown = wc.filter(({r,c}) => {
+    if(FILTER.status!=="all" && c.state!==FILTER.status) return false;
+    if(FILTER.channel!=="all" && r.channel!==FILTER.channel) return false;
     if(!q) return true;
     return [r.warrantyNo,r.serial,r.name,r.phone,r.area,r.dealer].join(" ").toLowerCase().includes(q);
-  }).sort((a,b) => b.r.installDate.localeCompare(a.r.installDate));
+  });
 
   const body = shown.length ? shown.map(({r,c}) => `
     <tr data-id="${r.id}">
       <td class="mono">${esc(r.warrantyNo)}</td>
-      <td><b>${esc(r.name)}</b><div class="src">${esc(r.area)}</div></td>
+      <td><b>${esc(r.name)}</b><div class="src">${esc(r.area||"")}</div></td>
       <td>${esc(c.model.name.replace("MySolar ",""))}</td>
       <td class="mono">${fmt(r.installDate)}</td>
-      <td>${pill(c)}${r.claims.some(x=>x.status==="open") ? ' <span class="pill a">Open claim</span>' : ""}</td>
+      <td>${pill(c)}${r.claims.length ? ' <span class="pill a">Open claim</span>' : ""}</td>
       <td><span class="pill ${r.channel==="direct"?"g":"n"}">${r.channel==="direct"?"Direct":"Dealer"}</span>
-          ${r.dealer ? `<div class="src">${esc(r.dealer)}</div>` : ""}</td>
-    </tr>`).join("") : `<tr><td colspan="6" class="empty">No records match those filters.</td></tr>`;
+        ${r.dealer?`<div class="src">${esc(r.dealer)}</div>`:""}</td>
+    </tr>`).join("")
+    : `<tr><td colspan="6" class="empty">${counts.total===0
+        ? "No installations registered yet.<br><span class='tiny'>Use “Register an installation” to add the first one.</span>"
+        : "No records match those filters."}</td></tr>`;
 
   return `<div class="page">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px">
       <h1>Warranty registry</h1>
       <a class="btn btn-p" href="#/admin/new">Register an installation</a>
     </div>
-
     <div class="stats">
       <div class="stat"><b>${counts.total}</b><span>Registered units</span></div>
       <div class="stat"><b style="color:var(--green)">${counts.guarantee}</b><span>Under guarantee</span></div>
       <div class="stat"><b style="color:var(--blue)">${counts.warranty}</b><span>Under tank warranty</span></div>
       <div class="stat"><b style="color:var(--amber)">${counts.openClaims}</b><span>Open claims</span></div>
     </div>
-
     <div class="toolbar">
-      <div class="field grow">
-        <label for="q">Search</label>
-        <input id="q" placeholder="Name, warranty no, serial, phone, area, dealer" value="${esc(FILTER.q)}">
-      </div>
-      <div class="field">
-        <label for="fs">Status</label>
-        <select id="fs">
-          <option value="all">All</option>
-          <option value="guarantee">Under guarantee</option>
-          <option value="warranty">Under tank warranty</option>
-          <option value="expired">Expired</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="fc">Sold via</label>
-        <select id="fc">
-          <option value="all">All</option>
-          <option value="direct">Direct</option>
-          <option value="dealer">Dealer</option>
-        </select>
-      </div>
+      <div class="field grow"><label for="q">Search</label>
+        <input id="q" placeholder="Name, warranty no, serial, phone, area, dealer" value="${esc(FILTER.q)}"></div>
+      <div class="field"><label for="fs">Status</label>
+        <select id="fs"><option value="all">All</option><option value="guarantee">Under guarantee</option>
+        <option value="warranty">Under tank warranty</option><option value="expired">Expired</option></select></div>
+      <div class="field"><label for="fc">Sold via</label>
+        <select id="fc"><option value="all">All</option><option value="direct">Direct</option>
+        <option value="dealer">Dealer</option></select></div>
     </div>
-
     <div class="tablewrap"><table>
       <thead><tr><th>Warranty no</th><th>Customer</th><th>Model</th><th>Installed</th><th>Status</th><th>Channel</th></tr></thead>
-      <tbody id="tb">${body}</tbody>
-    </table></div>
+      <tbody id="tb">${body}</tbody></table></div>
     <p class="tiny muted" style="margin-top:12px">Showing ${shown.length} of ${counts.total}. Click any row to open the record.</p>
   </div>`;
 }
@@ -528,17 +433,14 @@ async function viewDetail(id){
   const r = await DataSource.getById(id);
   if(!r) return `<div class="page"><div class="card empty">Record not found.</div></div>`;
   const c = coverage(r);
-
   const svc = r.service.length ? r.service.slice().reverse().map(s => `
     <div class="claim"><div style="display:flex;justify-content:space-between;gap:10px">
       <b>${esc(s.type)}</b><span class="src">${fmt(s.date)}</span></div>
       <div class="muted tiny">${esc(s.tech)} — ${esc(s.note)}</div></div>`).join("")
     : `<div class="claim muted tiny">No service visits recorded.</div>`;
-
   const claims = r.claims.length ? r.claims.slice().reverse().map(cl => `
     <div class="claim"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-      <b>${esc(cl.issue)}</b>
-      <span class="pill ${cl.status==="open"?"a":"g"}">${cl.status}</span></div>
+      <b>${esc(cl.issue)}</b><span class="pill ${cl.status==="resolved"?"g":"a"}">${esc(cl.status)}</span></div>
       <div class="src" style="margin:3px 0">${fmt(cl.date)}</div>
       <div class="muted tiny">${esc(cl.resolution)}</div></div>`).join("")
     : `<div class="claim muted tiny">No claims raised.</div>`;
@@ -546,25 +448,18 @@ async function viewDetail(id){
   return `<div class="page">
     <button class="crumb" onclick="location.hash='#/admin/list'">&larr; Back to registry</button>
     <div style="display:flex;justify-content:space-between;align-items:start;gap:14px;flex-wrap:wrap;margin-bottom:16px">
-      <div>
-        <h1>${esc(r.name)}</h1>
-        <div class="src">${esc(r.warrantyNo)} · ${esc(r.serial)}</div>
-      </div>
+      <div><h1>${esc(r.name)}</h1>
+        <div class="src">${esc(r.warrantyNo)}${r.serial?" · "+esc(r.serial):""}</div></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap">${pill(c)}
         <span class="pill ${r.channel==="direct"?"g":"n"}">${r.channel==="direct"?"Sold direct":"Via dealer"}</span></div>
     </div>
-
     <div class="detail-grid">
       <div style="display:flex;flex-direction:column;gap:18px">
-        <div class="card">
-          <div class="sec-h">Coverage</div>
+        <div class="card"><div class="sec-h">Coverage</div>
           <div class="timeline" style="border-bottom:0">
-            <div class="bar">
-              <span class="g" style="width:${c.pctGuarantee}%"></span>
-              <i style="width:${c.pctElapsed}%;opacity:.55"></i>
-            </div>
-            <div class="barlbl"><span>${fmt(r.installDate)}</span><span>${fmt(c.wEnd)}</span></div>
-          </div>
+            <div class="bar"><span class="g" style="width:${c.pctGuarantee}%"></span>
+              <i style="width:${c.pctElapsed}%;opacity:.55"></i></div>
+            <div class="barlbl"><span>${fmt(r.installDate)}</span><span>${fmt(c.wEnd)}</span></div></div>
           <dl class="kv" style="padding-top:6px">
             <dt>Model</dt><dd>${esc(c.model.name)}</dd>
             <dt>Capacity</dt><dd>${c.model.litres} L · ${c.model.gallons} gal · ${esc(c.model.pax)} pax</dd>
@@ -573,48 +468,33 @@ async function viewDetail(id){
             <dt>Installed</dt><dd>${fmt(r.installDate)}</dd>
             <dt>Guarantee ends (${c.model.guaranteeYears} yr)</dt><dd>${fmt(c.gEnd)}</dd>
             <dt>Tank warranty ends (${c.model.warrantyYears} yr)</dt><dd>${fmt(c.wEnd)}</dd>
-          </dl>
-        </div>
-
-        <div class="card">
-          <div class="sec-h">Service history
-            <button class="btn btn-s" style="padding:6px 12px;font-size:.85rem" id="addSvc">Log a visit</button></div>
-          ${svc}
-        </div>
-
+          </dl></div>
+        <div class="card"><div class="sec-h">Service history
+          <button class="btn btn-s" style="padding:6px 12px;font-size:.85rem" id="addSvc">Log a visit</button></div>
+          ${svc}</div>
         <div class="card"><div class="sec-h">Claims</div>${claims}</div>
       </div>
-
       <div style="display:flex;flex-direction:column;gap:18px">
-        <div class="card">
-          <div class="sec-h">Customer</div>
+        <div class="card"><div class="sec-h">Customer</div>
           <dl class="kv">
             <dt>Name</dt><dd>${esc(r.name)}</dd>
             <dt>Phone</dt><dd>${esc(r.phone)}</dd>
             <dt>Email</dt><dd style="word-break:break-all">${esc(r.email||"—")}</dd>
-            <dt>Area</dt><dd>${esc(r.area)}</dd>
-          </dl>
+            <dt>Area</dt><dd>${esc(r.area||"—")}</dd></dl>
           <div class="card-pad" style="border-top:1px solid var(--line);padding-top:14px">
             <div class="tiny muted">Installation address</div>
-            <div style="font-size:.92rem">${esc(r.address)}</div>
-          </div>
+            <div style="font-size:.92rem">${esc(r.address||"—")}</div></div>
           <div class="card-pad" style="border-top:1px solid var(--line)">
             <a class="btn btn-s btn-full" target="_blank" rel="noopener"
-               href="https://wa.me/6${digits(r.phone).replace(/^0/,"")}">WhatsApp customer</a>
-          </div>
+              href="https://wa.me/6${digits(r.phone).replace(/^0/,"")}">WhatsApp customer</a></div>
         </div>
-
-        <div class="card">
-          <div class="sec-h">Origin</div>
+        <div class="card"><div class="sec-h">Origin</div>
           <dl class="kv">
             <dt>Channel</dt><dd>${r.channel==="direct"?"Direct":"Dealer"}</dd>
             <dt>Dealer</dt><dd>${esc(r.dealer||"—")}</dd>
-            <dt>Installed by</dt><dd>${esc(r.installer||"—")}</dd>
-          </dl>
-        </div>
+            <dt>Installed by</dt><dd>${esc(r.installer||"—")}</dd></dl></div>
       </div>
-    </div>
-  </div>`;
+    </div></div>`;
 }
 
 function viewNew(){
@@ -624,38 +504,32 @@ function viewNew(){
     <button class="crumb" onclick="location.hash='#/admin/list'">&larr; Back to registry</button>
     <div class="card card-pad">
       <h2>Register an installation</h2>
-      <p class="tiny muted">Filled in by the install team on site. Warranty number is generated automatically.</p>
+      <p class="tiny muted">Warranty number is generated by the database.</p>
       <div id="nErr"></div>
       <div class="field"><label for="n_name">Customer name</label><input id="n_name"></div>
       <div class="row2">
         <div class="field"><label for="n_phone">Phone</label><input id="n_phone" placeholder="012-345 6789"></div>
-        <div class="field"><label for="n_email">Email (optional)</label><input id="n_email"></div>
-      </div>
+        <div class="field"><label for="n_email">Email (optional)</label><input id="n_email"></div></div>
       <div class="field"><label for="n_addr">Installation address</label><input id="n_addr"></div>
       <div class="row2">
         <div class="field"><label for="n_area">Area</label><input id="n_area" placeholder="Puchong"></div>
-        <div class="field"><label for="n_date">Install date</label><input id="n_date" type="date"></div>
-      </div>
+        <div class="field"><label for="n_date">Install date</label><input id="n_date" type="date"></div></div>
       <div class="row2">
         <div class="field"><label for="n_model">Model</label><select id="n_model">${opts}</select></div>
-        <div class="field"><label for="n_serial">Serial number</label><input id="n_serial" placeholder="Auto if blank"></div>
-      </div>
+        <div class="field"><label for="n_serial">Serial number</label><input id="n_serial" placeholder="Optional"></div></div>
       <div class="row2">
         <div class="field"><label for="n_channel">Sold via</label>
           <select id="n_channel"><option value="direct">Direct</option><option value="dealer">Dealer</option></select></div>
-        <div class="field"><label for="n_dealer">Dealer name</label><input id="n_dealer" placeholder="Leave blank if direct"></div>
-      </div>
+        <div class="field"><label for="n_dealer">Dealer name</label><input id="n_dealer" placeholder="Blank if direct"></div></div>
       <div class="field"><label for="n_installer">Installed by</label><input id="n_installer"></div>
       <button class="btn btn-p btn-full" id="nGo">Register &amp; generate warranty</button>
-    </div>
-  </div>`;
+    </div></div>`;
 }
 
 /* ---------- render ---------- */
 async function render(){
   nav();
-  const r = route();
-  const app = $("#app");
+  const r = route(), app = $("#app");
 
   if(r === "#/check" || r === "#/"){
     app.innerHTML = viewCheck();
@@ -665,74 +539,96 @@ async function render(){
   }
 
   if(r.startsWith("#/admin")){
-    if(!SESSION){
+    if(!USER){
       app.innerHTML = viewLogin();
-      const go = () => {
-        if($("#pw").value === "mysolar"){ SESSION = true; location.hash = "#/admin/list"; render(); }
-        else $("#loginErr").innerHTML = `<div class="err">Incorrect passcode.</div>`;
+      const go = async () => {
+        const btn = $("#loginGo");
+        btn.disabled = true; btn.textContent = "Signing in…";
+        const res = await DataSource.signIn($("#em").value.trim(), $("#pw").value);
+        btn.disabled = false; btn.textContent = "Sign in";
+        if(res.ok){ USER = res.user; location.hash = "#/admin/list"; render(); }
+        else $("#loginErr").innerHTML = `<div class="err">${esc(res.message)}</div>`;
       };
       $("#loginGo").onclick = go;
       $("#pw").addEventListener("keydown", e => { if(e.key==="Enter") go(); });
       return;
     }
 
-    if(r === "#/admin/new"){
-      app.innerHTML = viewNew();
-      $("#nGo").onclick = async () => {
-        const v = id => $("#"+id).value.trim();
-        if(!v("n_name") || !v("n_phone") || !v("n_date")){
-          $("#nErr").innerHTML = `<div class="err">Name, phone and install date are required.</div>`; return;
-        }
-        const row = await DataSource.createWarranty({
-          name:v("n_name"), phone:v("n_phone"), email:v("n_email"), address:v("n_addr"),
-          area:v("n_area"), installDate:v("n_date"), model:$("#n_model").value,
-          serial:v("n_serial"), channel:$("#n_channel").value, dealer:v("n_dealer"),
-          installer:v("n_installer")
-        });
-        location.hash = "#/admin/" + row.id;
-      };
-      return;
-    }
+    app.innerHTML = `<div class="spin">Loading…</div>`;
+    try{
+      if(r === "#/admin/new"){
+        app.innerHTML = viewNew();
+        $("#nGo").onclick = async () => {
+          const v = id => $("#"+id).value.trim();
+          if(!v("n_name") || !v("n_phone") || !v("n_date")){
+            $("#nErr").innerHTML = `<div class="err">Name, phone and install date are required.</div>`; return;
+          }
+          const btn = $("#nGo"); btn.disabled = true; btn.textContent = "Saving…";
+          try{
+            const row = await DataSource.createWarranty({
+              name:v("n_name"), phone:v("n_phone"), email:v("n_email"), address:v("n_addr"),
+              area:v("n_area"), installDate:v("n_date"), model:$("#n_model").value,
+              serial:v("n_serial"), channel:$("#n_channel").value,
+              dealer:v("n_dealer"), installer:v("n_installer")
+            });
+            location.hash = "#/admin/" + row.id;
+          }catch(e){
+            $("#nErr").innerHTML = `<div class="err">Couldn't save.<br><span class="tiny mono">${esc(e.message||e)}</span></div>`;
+            btn.disabled = false; btn.textContent = "Register & generate warranty";
+          }
+        };
+        return;
+      }
 
-    const m = r.match(/^#\/admin\/(\d+)$/);
-    if(m){
-      app.innerHTML = await viewDetail(m[1]);
-      const btn = $("#addSvc");
-      if(btn) btn.onclick = async () => {
-        const note = prompt("What was done on this visit?");
-        if(!note) return;
-        await DataSource.addServiceVisit(m[1], {
-          date:new Date().toISOString().slice(0,10), type:"Service visit", tech:"Staff", note
-        });
-        render();
-      };
-      return;
-    }
+      const m = r.match(/^#\/admin\/(\d+)$/);
+      if(m){
+        app.innerHTML = await viewDetail(m[1]);
+        const btn = $("#addSvc");
+        if(btn) btn.onclick = async () => {
+          const note = prompt("What was done on this visit?");
+          if(!note) return;
+          await DataSource.addServiceVisit(m[1], {
+            date:new Date().toISOString().slice(0,10), type:"Service visit",
+            tech:USER?.email || "Staff", note
+          });
+          render();
+        };
+        return;
+      }
 
-    app.innerHTML = await viewList();
-    $("#fs").value = FILTER.status;
-    $("#fc").value = FILTER.channel;
-    const refresh = async () => {
-      FILTER.q = $("#q").value; FILTER.status = $("#fs").value; FILTER.channel = $("#fc").value;
-      const pos = $("#q").selectionStart;
       app.innerHTML = await viewList();
+      const wire = () => {
+        const refresh = async () => {
+          FILTER.q = $("#q").value; FILTER.status = $("#fs").value; FILTER.channel = $("#fc").value;
+          const pos = $("#q").selectionStart;
+          app.innerHTML = await viewList();
+          $("#fs").value = FILTER.status; $("#fc").value = FILTER.channel;
+          $("#q").focus(); $("#q").setSelectionRange(pos,pos);
+          wire();
+        };
+        $("#q").oninput = refresh; $("#fs").onchange = refresh; $("#fc").onchange = refresh;
+        document.querySelectorAll("#tb tr[data-id]").forEach(tr =>
+          tr.onclick = () => location.hash = "#/admin/" + tr.dataset.id);
+      };
       $("#fs").value = FILTER.status; $("#fc").value = FILTER.channel;
-      $("#q").focus(); $("#q").setSelectionRange(pos,pos);
-      wireList();
-    };
-    const wireList = () => {
-      $("#q").oninput = refresh; $("#fs").onchange = refresh; $("#fc").onchange = refresh;
-      document.querySelectorAll("#tb tr[data-id]").forEach(tr =>
-        tr.onclick = () => location.hash = "#/admin/" + tr.dataset.id);
-    };
-    wireList();
+      wire();
+    }catch(e){
+      app.innerHTML = `<div class="page"><div class="err">
+        Couldn't load data from the database.<br>
+        <span class="tiny mono">${esc(e.message||e)}</span><br><br>
+        <span class="tiny">Check that both SQL files have been run, and that you're signed in.</span>
+      </div></div>`;
+    }
     return;
   }
 
   location.hash = "#/check";
 }
 
-render();
+(async function boot(){
+  USER = await DataSource.currentUser();
+  render();
+})();
 </script>
 </body>
 </html>
