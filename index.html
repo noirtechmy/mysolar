@@ -158,6 +158,29 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+/* --- Instant email notifications (Google Apps Script web app) -------------
+   Paste the /exec URL from your Apps Script deployment below, and the same
+   NOTIFY_SECRET you set in its Script Properties.
+   Leave NOTIFY_URL empty to switch notifications off entirely. */
+const NOTIFY_URL    = "";
+const NOTIFY_SECRET = "";
+
+/* Fire-and-forget. Never blocks the user, never breaks the app if it fails.
+   Uses no-cors + text/plain so the browser sends it without a preflight
+   check, which Apps Script does not answer. We cannot read the reply, and
+   for a notification that is fine. */
+function notify(event, payload){
+  if (!NOTIFY_URL) return;
+  try {
+    fetch(NOTIFY_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(Object.assign({ event, secret: NOTIFY_SECRET }, payload))
+    }).catch(() => {});
+  } catch (e) { /* notifications must never break the app */ }
+}
+
 function rowFromView(v, service = [], claims = []) {
   return {
     id: v.id, warrantyNo: v.warranty_no, serial: v.serial_no || "",
@@ -368,7 +391,23 @@ async function doLookup(){
       errBox.innerHTML = `<div class="err">${res.reason==="notfound"
         ? "We couldn't find that warranty number. Please check it and try again."
         : "That phone number doesn't match this warranty."}</div>`;
-    } else box.innerHTML = customerCard(res.row);
+    } else {
+      box.innerHTML = customerCard(res.row);
+      const c = coverage(res.row);
+      // A customer checking a system that is out of, or nearly out of,
+      // warranty is a live sales signal. Tell the office immediately.
+      if (c.state === "expired" || c.daysLeft < 365) {
+        notify("warranty_expiring_lookup", {
+          customer_name:  res.row.name,
+          warranty_no:    res.row.warrantyNo,
+          model:          c.model.name,
+          status:         c.label,
+          warranty_end:   fmt(c.wEnd),
+          pct_guarantee:  c.pctGuarantee,
+          pct_elapsed:    c.pctElapsed
+        });
+      }
+    }
   }catch(e){
     errBox.innerHTML = `<div class="err">Couldn't reach the server. Please try again.<br><span class="tiny mono">${esc(e.message||e)}</span></div>`;
   }
@@ -703,8 +742,21 @@ function wireFollowups(){
 
     card.querySelectorAll("[data-outcome]").forEach(b => b.onclick = async () => {
       const note = card.querySelector("[data-note]").value.trim();
+      const outcome = b.dataset.outcome;
       b.disabled = true;
-      try { await DataSource.completeFollowup(id, b.dataset.outcome, note); render(); }
+      try {
+        await DataSource.completeFollowup(id, outcome, note);
+        if (outcome === "sold" || outcome === "booked") {
+          notify("followup_won", {
+            customer_name: card.querySelector(".fu-name").textContent.trim(),
+            label:   card.querySelector(".pill").textContent.trim(),
+            outcome: (OUTCOMES.find(o => o[0] === outcome) || [,outcome])[1],
+            notes:   note,
+            staff:   USER?.email || "staff"
+          });
+        }
+        render();
+      }
       catch(e){ alert(e.message || e); b.disabled = false; }
     });
 
@@ -769,6 +821,17 @@ async function render(){
               area:v("n_area"), installDate:v("n_date"), model:$("#n_model").value,
               serial:v("n_serial"), channel:$("#n_channel").value,
               dealer:v("n_dealer"), installer:v("n_installer")
+            });
+            notify("installation_registered", {
+              customer_name: row.name,
+              phone:         row.phone,
+              area:          row.area,
+              model:         MODELS[row.model] ? MODELS[row.model].name : row.model,
+              warranty_no:   row.warrantyNo,
+              install_date:  fmt(row.installDate),
+              channel:       row.channel,
+              dealer:        row.dealer,
+              staff:         USER?.email || "staff"
             });
             location.hash = "#/admin/" + row.id;
           }catch(e){
