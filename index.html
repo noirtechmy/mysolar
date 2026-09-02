@@ -117,6 +117,13 @@ tbody tr:hover{background:var(--tint)}
 .fu-panel{display:none;padding:15px 18px;border-top:1px solid var(--line);background:var(--tint)}
 .fu-panel.show{display:block}
 .fu-opts{display:flex;gap:7px;flex-wrap:wrap}
+.idlewarn{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:200;
+  background:var(--ink);color:#fff;padding:13px 18px;border-radius:6px;font-size:.92rem;
+  box-shadow:0 10px 30px rgba(0,0,0,.3);display:flex;align-items:center;max-width:92vw}
+.consent{border:1.5px solid var(--line);border-radius:5px;padding:14px;background:var(--tint);margin-bottom:16px}
+.privacy-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+.privacy-grid p{font-size:.93rem}
+@media(max-width:820px){.privacy-grid{grid-template-columns:1fr}}
 .spin{padding:50px 20px;text-align:center;color:var(--grey);font-family:var(--mono);font-size:.85rem;letter-spacing:.1em;text-transform:uppercase}
 </style>
 </head>
@@ -241,7 +248,8 @@ const DataSource = {
       p_address:p.address || null, p_area:p.area || null,
       p_model_code:p.model, p_serial_no:p.serial || null,
       p_install_date:p.installDate, p_channel:p.channel,
-      p_dealer_name:p.dealer || null, p_installer:p.installer || null
+      p_dealer_name:p.dealer || null, p_installer:p.installer || null,
+      p_consent: p.consent === true, p_notice_ver: 'v1'
     });
     if (error) throw error;
     return await this.getById(data);
@@ -341,6 +349,86 @@ const pill = c => `<span class="pill ${c.cls}">${c.label}</span>`;
 let USER = null;
 let FILTER = { q:"", status:"all", channel:"all" };
 let FU_COUNT = 0;
+
+/* ---------- session security ----------
+   Supabase keeps a session alive indefinitely by default: the refresh token
+   renews itself forever. For a dashboard holding customer names, phone
+   numbers and home addresses, sitting on an unattended office PC, that is
+   not acceptable. Two limits:
+     IDLE   — signed out after this long with no interaction
+     MAX    — signed out this long after signing in, active or not
+   Set the matching values in Supabase -> Authentication -> Sessions too,
+   so the server enforces it as well as the browser. */
+const IDLE_LIMIT_MIN   = 20;
+const MAX_SESSION_HRS  = 12;
+const WARN_BEFORE_MIN  = 2;
+
+let lastActivity = Date.now();
+let AUTH_MSG = "";
+let guardTimer = null;
+
+function sessionStart(){
+  const v = localStorage.getItem("mysolar_session_start");
+  return v ? Number(v) : null;
+}
+function setSessionStart(t){
+  if (t) localStorage.setItem("mysolar_session_start", String(t));
+  else   localStorage.removeItem("mysolar_session_start");
+}
+
+let lastMark = 0;
+function markActivity(){
+  const now = Date.now();
+  if (now - lastMark < 5000) return;      // throttle
+  lastMark = now; lastActivity = now;
+  const w = document.getElementById("idleWarn");
+  if (w) w.remove();
+}
+["click","keydown","mousemove","touchstart","scroll"].forEach(ev =>
+  window.addEventListener(ev, markActivity, { passive: true }));
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkSession(); });
+
+async function forceSignOut(msg){
+  AUTH_MSG = msg;
+  setSessionStart(null);
+  try { await DataSource.signOut(); } catch(e) {}
+  USER = null; FU_COUNT = 0;
+  location.hash = "#/admin";
+  render();
+}
+
+function showIdleWarning(secsLeft){
+  if (document.getElementById("idleWarn")) return;
+  const d = document.createElement("div");
+  d.id = "idleWarn";
+  d.className = "idlewarn";
+  d.innerHTML = `Signing you out in about ${Math.ceil(secsLeft/60)} minute(s) for security.
+    <button class="btn btn-s" style="padding:7px 14px;font-size:.86rem;margin-left:10px">Stay signed in</button>`;
+  d.querySelector("button").onclick = () => { lastActivity = Date.now(); d.remove(); };
+  document.body.appendChild(d);
+}
+
+async function checkSession(){
+  if (!USER) return;
+  const now = Date.now();
+
+  const started = sessionStart();
+  if (started && now - started > MAX_SESSION_HRS * 3600e3) {
+    return forceSignOut(`Signed out after ${MAX_SESSION_HRS} hours. Please sign in again.`);
+  }
+
+  const idleMs = now - lastActivity;
+  if (idleMs > IDLE_LIMIT_MIN * 60e3) {
+    return forceSignOut(`Signed out after ${IDLE_LIMIT_MIN} minutes of inactivity.`);
+  }
+  const leftMs = IDLE_LIMIT_MIN * 60e3 - idleMs;
+  if (leftMs < WARN_BEFORE_MIN * 60e3) showIdleWarning(leftMs / 1000);
+}
+
+function startSessionGuard(){
+  if (guardTimer) clearInterval(guardTimer);
+  guardTimer = setInterval(checkSession, 20000);
+}
 const route = () => (location.hash || "#/check").split("?")[0];
 window.addEventListener("hashchange", render);
 
@@ -353,7 +441,11 @@ function nav(){
         FU_COUNT ? ` <span class="badge">${FU_COUNT}</span>` : ""}</a>` : ""}
     ${USER ? `<button id="outBtn">Sign out</button>` : ""}`;
   const o = $("#outBtn");
-  if(o) o.onclick = async () => { await DataSource.signOut(); USER=null; location.hash="#/check"; render(); };
+  if(o) o.onclick = async () => {
+    setSessionStart(null); await DataSource.signOut();
+    USER = null; FU_COUNT = 0; AUTH_MSG = "";
+    location.hash = "#/check"; render();
+  };
 }
 
 /* ---------- customer ---------- */
@@ -373,6 +465,9 @@ function viewCheck(){
     <p class="tiny muted" style="margin:14px 0 0">
       Your warranty number is on the plate at the end of the tank and on your
       installation slip. Can't find it? WhatsApp 012-318 0048 and we'll look it up.
+    </p>
+    <p class="tiny muted" style="margin:10px 0 0">
+      <a href="#/privacy">Privacy notice · Notis privasi</a>
     </p>
   </div>
   <div id="lkResult" style="max-width:620px;margin:18px auto 0"></div></div>`;
@@ -454,6 +549,7 @@ function viewLogin(){
   return `<div class="page narrow"><div class="card card-pad">
     <h2>Staff sign in</h2>
     <p class="tiny muted">Accounts are created in Supabase under Authentication → Users.</p>
+    ${AUTH_MSG ? `<div class="ok" style="background:var(--tint);color:var(--blue-deep);border-color:var(--line)">${esc(AUTH_MSG)}</div>` : ""}
     <div id="loginErr"></div>
     <div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="username"></div>
     <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div>
@@ -614,10 +710,99 @@ function viewNew(){
           <select id="n_channel"><option value="direct">Direct</option><option value="dealer">Dealer</option></select></div>
         <div class="field"><label for="n_dealer">Dealer name</label><input id="n_dealer" placeholder="Blank if direct"></div></div>
       <div class="field"><label for="n_installer">Installed by</label><input id="n_installer"></div>
+
+      <div class="consent">
+        <label style="display:flex;gap:10px;align-items:flex-start;font-family:var(--body);
+                      font-size:.93rem;letter-spacing:0;text-transform:none;color:var(--ink);
+                      cursor:pointer;margin:0">
+          <input type="checkbox" id="n_consent" style="width:18px;height:18px;margin-top:2px;flex:none">
+          <span>The customer has been shown the
+            <a href="#/privacy" target="_blank">privacy notice</a>
+            and agrees to MySolar keeping these details for warranty and service purposes.</span>
+        </label>
+      </div>
+
       <button class="btn btn-p btn-full" id="nGo">Register &amp; generate warranty</button>
     </div></div>`;
 }
 
+
+/* ---------- privacy notice (PDPA) ---------- */
+/* Malaysia's PDPA requires the notice in both Bahasa Malaysia and English.
+   Keep both columns in step if you change the wording, and bump the version
+   in register_installation so it is clear which text a customer agreed to. */
+function viewPrivacy(){
+  return `<div class="page" style="max-width:880px">
+    <button class="crumb" onclick="history.length>1?history.back():location.hash='#/check'">&larr; Back</button>
+    <h1>Privacy Notice · Notis Privasi</h1>
+    <p class="tiny muted" style="margin-top:6px">Version 1 · MySolar Sales And Marketing Sdn Bhd</p>
+
+    <div class="privacy-grid">
+      <div class="card card-pad">
+        <h3 style="margin-bottom:12px">English</h3>
+        <p><b>What we collect.</b> Your name, phone number, email address if given,
+        installation address, and details of the system installed — model, serial
+        number, installation date, service visits and warranty claims.</p>
+
+        <p><b>Why we collect it.</b> To register and honour your warranty, to identify
+        your system when you request service, to contact you about servicing or
+        warranty matters, and to keep records required for after-sales support.</p>
+
+        <p><b>Who sees it.</b> MySolar staff and our own installation and service
+        technicians. Where your system was supplied through an authorised dealer,
+        that dealer may be given the details needed to service it. We do not sell
+        your information or share it for marketing by other companies.</p>
+
+        <p><b>Where it is kept.</b> In a secured database operated by Supabase,
+        hosted in Singapore. Access requires an individual staff account.</p>
+
+        <p><b>How long.</b> For the life of your warranty and a reasonable period
+        afterwards for service history, then removed or anonymised.</p>
+
+        <p><b>Your rights.</b> You may ask to see the information we hold about you,
+        correct anything wrong, or limit how we use it. Email
+        <a href="mailto:info@mysolar.my">info@mysolar.my</a> or call 1300 888 048
+        and we will respond within 21 days.</p>
+
+        <p><b>Providing this information is voluntary</b>, but without it we cannot
+        register your warranty or provide warranty service.</p>
+      </div>
+
+      <div class="card card-pad">
+        <h3 style="margin-bottom:12px">Bahasa Malaysia</h3>
+        <p><b>Maklumat yang dikumpul.</b> Nama, nombor telefon, alamat e-mel jika
+        diberikan, alamat pemasangan, serta butiran sistem yang dipasang — model,
+        nombor siri, tarikh pemasangan, lawatan servis dan tuntutan waranti.</p>
+
+        <p><b>Tujuan pengumpulan.</b> Untuk mendaftar dan menghormati waranti anda,
+        mengenal pasti sistem anda apabila anda meminta servis, menghubungi anda
+        berkenaan servis atau hal waranti, dan menyimpan rekod yang diperlukan bagi
+        sokongan selepas jualan.</p>
+
+        <p><b>Siapa yang boleh melihatnya.</b> Kakitangan MySolar serta juruteknik
+        pemasangan dan servis kami. Sekiranya sistem anda dibekalkan melalui
+        pengedar sah, pengedar tersebut mungkin diberikan maklumat yang diperlukan
+        untuk menyelenggara sistem itu. Kami tidak menjual maklumat anda atau
+        berkongsi untuk tujuan pemasaran syarikat lain.</p>
+
+        <p><b>Tempat penyimpanan.</b> Dalam pangkalan data selamat yang dikendalikan
+        oleh Supabase, dihoskan di Singapura. Akses memerlukan akaun kakitangan
+        individu.</p>
+
+        <p><b>Tempoh penyimpanan.</b> Sepanjang tempoh waranti dan tempoh munasabah
+        selepas itu bagi rekod servis, kemudian dibuang atau dilindung nama.</p>
+
+        <p><b>Hak anda.</b> Anda boleh meminta untuk melihat maklumat yang kami
+        simpan, membetulkan maklumat yang salah, atau menghadkan penggunaannya.
+        E-mel <a href="mailto:info@mysolar.my">info@mysolar.my</a> atau hubungi
+        1300 888 048 dan kami akan membalas dalam tempoh 21 hari.</p>
+
+        <p><b>Pemberian maklumat ini adalah secara sukarela</b>, namun tanpanya kami
+        tidak dapat mendaftarkan waranti atau memberikan servis waranti.</p>
+      </div>
+    </div>
+  </div>`;
+}
 
 /* ---------- follow-ups ---------- */
 /* One message per rule. Staff can edit before sending - the link opens
@@ -773,6 +958,8 @@ async function render(){
   nav();
   const r = route(), app = $("#app");
 
+  if(r === "#/privacy"){ app.innerHTML = viewPrivacy(); return; }
+
   if(r === "#/check" || r === "#/"){
     app.innerHTML = viewCheck();
     $("#lkGo").onclick = doLookup;
@@ -788,8 +975,12 @@ async function render(){
         btn.disabled = true; btn.textContent = "Signing in…";
         const res = await DataSource.signIn($("#em").value.trim(), $("#pw").value);
         btn.disabled = false; btn.textContent = "Sign in";
-        if(res.ok){ USER = res.user; FU_COUNT = await DataSource.countFollowups();
-                    location.hash = "#/admin/list"; render(); }
+        if(res.ok){
+          USER = res.user; AUTH_MSG = "";
+          lastActivity = Date.now(); setSessionStart(Date.now()); startSessionGuard();
+          FU_COUNT = await DataSource.countFollowups();
+          location.hash = "#/admin/list"; render();
+        }
         else $("#loginErr").innerHTML = `<div class="err">${esc(res.message)}</div>`;
       };
       $("#loginGo").onclick = go;
@@ -814,13 +1005,16 @@ async function render(){
           if(!v("n_name") || !v("n_phone") || !v("n_date")){
             $("#nErr").innerHTML = `<div class="err">Name, phone and install date are required.</div>`; return;
           }
+          if(!$("#n_consent").checked){
+            $("#nErr").innerHTML = `<div class="err">The customer must be shown the privacy notice and agree before their details can be saved.</div>`; return;
+          }
           const btn = $("#nGo"); btn.disabled = true; btn.textContent = "Saving…";
           try{
             const row = await DataSource.createWarranty({
               name:v("n_name"), phone:v("n_phone"), email:v("n_email"), address:v("n_addr"),
               area:v("n_area"), installDate:v("n_date"), model:$("#n_model").value,
               serial:v("n_serial"), channel:$("#n_channel").value,
-              dealer:v("n_dealer"), installer:v("n_installer")
+              dealer:v("n_dealer"), installer:v("n_installer"), consent:true
             });
             notify("installation_registered", {
               customer_name: row.name,
@@ -889,7 +1083,19 @@ async function render(){
 
 (async function boot(){
   USER = await DataSource.currentUser();
-  if(USER) FU_COUNT = await DataSource.countFollowups();
+  if (USER) {
+    // A session restored from a previous visit has unknown age — treat the
+    // stored stamp as the truth, and if there isn't one, start the clock now.
+    if (!sessionStart()) setSessionStart(Date.now());
+    const started = sessionStart();
+    if (Date.now() - started > MAX_SESSION_HRS * 3600e3) {
+      await forceSignOut("Your previous session expired. Please sign in again.");
+      return;
+    }
+    lastActivity = Date.now();
+    startSessionGuard();
+    FU_COUNT = await DataSource.countFollowups();
+  }
   render();
 })();
 </script>
