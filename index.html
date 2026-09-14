@@ -196,7 +196,11 @@ function rowFromView(v, service = [], claims = []) {
     installDate: v.install_date, channel: v.channel,
     dealer: v.dealer_name || "", installer: v.installer || "",
     service: service.map(s => ({ date:s.visit_date, type:s.visit_type,
-                                 tech:s.technician || "", note:s.notes || "" })),
+                                 tech:s.technician || "", note:s.notes || "",
+                                 fault: s.is_fault_visit === true,
+                                 parts: s.parts_replaced || "",
+                                 chargeable: s.chargeable === true,
+                                 amount: s.amount })),
     claims:  claims.map(c => ({ date:c.raised_on, issue:c.issue,
                                 status:c.status, resolution:c.resolution || "" }))
   };
@@ -257,8 +261,15 @@ const DataSource = {
 
   async addServiceVisit(id, visit){
     const { error } = await sb.from("service_visits").insert({
-      installation_id:id, visit_date:visit.date, visit_type:visit.type,
-      technician:visit.tech || null, notes:visit.note || null
+      installation_id: id,
+      visit_date:      visit.date,
+      visit_type:      visit.type,
+      is_fault_visit:  visit.fault === true,
+      technician:      visit.tech   || null,
+      parts_replaced:  visit.parts  || null,
+      chargeable:      visit.chargeable === true,
+      amount:          visit.amount != null && visit.amount !== "" ? Number(visit.amount) : null,
+      notes:           visit.note   || null
     });
     if (error) throw error;
     return await this.getById(id);
@@ -344,6 +355,27 @@ function coverage(row){
     daysLeft:Math.max(daysBetween(now,wEnd),0) };
 }
 const pill = c => `<span class="pill ${c.cls}">${c.label}</span>`;
+
+/* Visit types. `fault` decides whether a visit counts toward the
+   repeat-repair alert. Routine servicing must never count — two annual
+   services is normal, two fault callbacks in a year is the problem. */
+const VISIT_TYPES = [
+  { v:"Routine service",  fault:false },
+  { v:"Repair — fault reported", fault:true  },
+  { v:"Callback — same fault again", fault:true  },
+  { v:"Inspection",       fault:false },
+  { v:"Installation check", fault:false }
+];
+
+/* Must match followup_rules.offset_value / window_months for 'repeat_visits'. */
+const REPEAT_THRESHOLD = 2;
+const REPEAT_WINDOW_MONTHS = 12;
+
+function faultVisitsInWindow(service){
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - REPEAT_WINDOW_MONTHS);
+  return service.filter(s => s.fault && new Date(s.date + "T00:00:00") >= cutoff);
+}
 
 /* ---------- state ---------- */
 let USER = null;
@@ -621,11 +653,57 @@ async function viewDetail(id){
   const r = await DataSource.getById(id);
   if(!r) return `<div class="page"><div class="card empty">Record not found.</div></div>`;
   const c = coverage(r);
+  const faults = faultVisitsInWindow(r.service);
+  const repeatFlag = faults.length >= REPEAT_THRESHOLD;
+
   const svc = r.service.length ? r.service.slice().reverse().map(s => `
-    <div class="claim"><div style="display:flex;justify-content:space-between;gap:10px">
-      <b>${esc(s.type)}</b><span class="src">${fmt(s.date)}</span></div>
-      <div class="muted tiny">${esc(s.tech)} — ${esc(s.note)}</div></div>`).join("")
+    <div class="claim"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+      <b>${esc(s.type)}</b>
+      <span style="display:flex;gap:6px;align-items:center">
+        ${s.fault ? '<span class="pill x">Fault</span>' : ''}
+        ${s.chargeable ? `<span class="pill n">RM ${esc(s.amount ?? "—")}</span>` : ''}
+        <span class="src">${fmt(s.date)}</span></span></div>
+      <div class="muted tiny">${esc(s.tech || "—")}${s.note ? " — " + esc(s.note) : ""}</div>
+      ${s.parts ? `<div class="muted tiny">Parts: ${esc(s.parts)}</div>` : ""}
+    </div>`).join("")
     : `<div class="claim muted tiny">No service visits recorded.</div>`;
+
+  const repeatBanner = repeatFlag ? `
+    <div class="claim" style="background:var(--red-bg);border-bottom:1px solid var(--line)">
+      <b style="color:var(--red)">${faults.length} fault visits in the last ${REPEAT_WINDOW_MONTHS} months</b>
+      <div class="tiny" style="color:var(--red)">This unit keeps coming back. Worth an owner
+      checking the diagnosis before another part is replaced.</div>
+    </div>` : "";
+
+  const visitOpts = VISIT_TYPES.map((t,i) =>
+    `<option value="${i}">${t.v}</option>`).join("");
+
+  const svcForm = `
+    <div class="fu-panel" id="svcPanel">
+      <div class="row2">
+        <div class="field"><label for="sv_date">Visit date</label>
+          <input id="sv_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="field"><label for="sv_type">Type of visit</label>
+          <select id="sv_type">${visitOpts}</select></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="sv_tech">Technician</label>
+          <input id="sv_tech" placeholder="Name of who attended"></div>
+        <div class="field"><label for="sv_parts">Parts replaced</label>
+          <input id="sv_parts" placeholder="Leave blank if none"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="sv_chg">Chargeable</label>
+          <select id="sv_chg"><option value="no">No — under warranty</option>
+                              <option value="yes">Yes — customer charged</option></select></div>
+        <div class="field"><label for="sv_amt">Amount (RM)</label>
+          <input id="sv_amt" type="number" step="0.01" placeholder="0.00"></div>
+      </div>
+      <div class="field"><label for="sv_note">What was done</label>
+        <input id="sv_note" placeholder="e.g. Checked thermostat, cleaned panel"></div>
+      <div id="svErr"></div>
+      <button class="btn btn-p" id="sv_save">Save visit</button>
+    </div>`;
   const claims = r.claims.length ? r.claims.slice().reverse().map(cl => `
     <div class="claim"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
       <b>${esc(cl.issue)}</b><span class="pill ${cl.status==="resolved"?"g":"a"}">${esc(cl.status)}</span></div>
@@ -657,9 +735,10 @@ async function viewDetail(id){
             <dt>Guarantee ends (${c.model.guaranteeYears} yr)</dt><dd>${fmt(c.gEnd)}</dd>
             <dt>Tank warranty ends (${c.model.warrantyYears} yr)</dt><dd>${fmt(c.wEnd)}</dd>
           </dl></div>
-        <div class="card"><div class="sec-h">Service history
+        <div class="card"><div class="sec-h">
+          <span>Service history${faults.length ? ` <span class="pill ${repeatFlag?"x":"n"}">${faults.length} fault${faults.length===1?"":"s"} / ${REPEAT_WINDOW_MONTHS}mth</span>` : ""}</span>
           <button class="btn btn-s" style="padding:6px 12px;font-size:.85rem" id="addSvc">Log a visit</button></div>
-          ${svc}</div>
+          ${repeatBanner}${svcForm}${svc}</div>
         <div class="card"><div class="sec-h">Claims</div>${claims}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:18px">
@@ -818,6 +897,8 @@ const WA_TEMPLATES = {
     `Hi ${r.customer_name}, this is MySolar. Your system was installed on ${fmt(r.install_date)} and the tank warranty runs to ${fmt(r.warranty_end)}. Happy to come and check its condition and talk through your options — no obligation.`,
   dormant: r =>
     `Hi ${r.customer_name}, this is MySolar. It's been a while since your last service. Regular servicing keeps the system running efficiently — would you like us to arrange a visit?`,
+  repeat_visits: r =>
+    `Hi ${r.customer_name}, this is MySolar. We noticed your system has needed attention more than once recently. We'd like to send a senior technician to look at it properly rather than keep changing parts. When would suit you?`,
   claim_stale: r =>
     `Hi ${r.customer_name}, this is MySolar following up on the issue you reported. Sorry for the delay — we'd like to get this sorted for you. When would suit for a visit?`
 };
@@ -848,6 +929,8 @@ async function viewFollowups(){
         <div>
           <span class="pill ${r.priority==="high"?"x":r.priority==="normal"?"w":"n"}">${esc(r.label)}</span>
           ${r.days_overdue > 0 ? `<span class="pill a">${r.days_overdue}d overdue</span>` : ""}
+          ${r.rule_code === "repeat_visits" && r.fault_visits_12m
+              ? `<span class="pill x">${r.fault_visits_12m} repairs / 12mth</span>` : ""}
           <div class="fu-name">${esc(r.customer_name)}</div>
           <div class="src">${esc(r.customer_phone)} · ${esc(r.customer_area||"—")} · ${esc(r.warranty_no)} · ${esc(r.model_name.replace("MySolar ",""))}</div>
         </div>
@@ -1040,14 +1123,53 @@ async function render(){
       if(m){
         app.innerHTML = await viewDetail(m[1]);
         const btn = $("#addSvc");
-        if(btn) btn.onclick = async () => {
-          const note = prompt("What was done on this visit?");
-          if(!note) return;
-          await DataSource.addServiceVisit(m[1], {
-            date:new Date().toISOString().slice(0,10), type:"Service visit",
-            tech:USER?.email || "Staff", note
-          });
-          render();
+        const panel = $("#svcPanel");
+        if(btn && panel) btn.onclick = () => panel.classList.toggle("show");
+
+        const saveBtn = $("#sv_save");
+        if(saveBtn) saveBtn.onclick = async () => {
+          const vt = VISIT_TYPES[Number($("#sv_type").value)];
+          if(!$("#sv_date").value){
+            $("#svErr").innerHTML = `<div class="err">Visit date is required.</div>`; return;
+          }
+          if(!$("#sv_note").value.trim()){
+            $("#svErr").innerHTML = `<div class="err">Please record what was done — this is what stops the same fault being guessed at twice.</div>`; return;
+          }
+          saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+          try{
+            const updated = await DataSource.addServiceVisit(m[1], {
+              date:  $("#sv_date").value,
+              type:  vt.v,
+              fault: vt.fault,
+              tech:  $("#sv_tech").value.trim() || (USER?.email || "Staff"),
+              parts: $("#sv_parts").value.trim(),
+              chargeable: $("#sv_chg").value === "yes",
+              amount: $("#sv_amt").value,
+              note:  $("#sv_note").value.trim()
+            });
+
+            /* The whole point of the feature: the moment a unit crosses the
+               threshold, tell the owners. Don't wait for tomorrow's digest. */
+            const f = faultVisitsInWindow(updated.service);
+            if (vt.fault && f.length >= REPEAT_THRESHOLD) {
+              notify("repeat_repair_alert", {
+                customer_name: updated.name,
+                phone:         updated.phone,
+                area:          updated.area,
+                warranty_no:   updated.warrantyNo,
+                model:         MODELS[updated.model] ? MODELS[updated.model].name : updated.model,
+                fault_count:   f.length,
+                window_months: REPEAT_WINDOW_MONTHS,
+                visits:        f.slice().reverse().map(x =>
+                                 `${fmt(x.date)} — ${x.type}${x.parts ? " (" + x.parts + ")" : ""}`).join(" | "),
+                staff:         USER?.email || "staff"
+              });
+            }
+            render();
+          }catch(e){
+            $("#svErr").innerHTML = `<div class="err">Couldn't save.<br><span class="tiny mono">${esc(e.message||e)}</span></div>`;
+            saveBtn.disabled = false; saveBtn.textContent = "Save visit";
+          }
         };
         return;
       }
