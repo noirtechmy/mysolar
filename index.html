@@ -331,6 +331,27 @@ const DataSource = {
     return await this.getById(id);
   },
 
+  async listRules(){
+    const { data, error } = await sb.from("followup_rules").select("*").order("priority").order("label");
+    if (error) throw error;
+    return data || [];
+  },
+  async listSettings(){
+    const { data, error } = await sb.from("app_settings").select("*").order("key");
+    if (error) throw error;
+    return data || [];
+  },
+  async saveRule(code, active, offset, windowMonths){
+    const { error } = await sb.rpc("update_followup_rule", {
+      p_code: code, p_active: active, p_offset: Number(offset),
+      p_window: windowMonths === "" || windowMonths == null ? null : Number(windowMonths) });
+    if (error) throw error;
+  },
+  async saveSetting(key, value){
+    const { error } = await sb.rpc("update_app_setting", { p_key: key, p_value: String(value) });
+    if (error) throw error;
+  },
+
   async setBlacklist(customerId, on, reason){
     const { error } = await sb.rpc("set_blacklist", {
       p_customer_id: customerId, p_on: on, p_reason: reason });
@@ -556,6 +577,7 @@ function nav(){
     <a href="#/admin" class="${r.startsWith("#/admin")&&r!=="#/admin/followups"?"on":""}">Staff</a>
     ${USER ? `<a href="#/admin/followups" class="${r==="#/admin/followups"?"on":""}">Follow-ups${
         FU_COUNT ? ` <span class="badge">${FU_COUNT}</span>` : ""}</a>` : ""}
+    ${USER ? `<a href="#/admin/settings" class="${r==="#/admin/settings"?"on":""}">Settings</a>` : ""}
     ${USER ? `<button id="outBtn">Sign out</button>` : ""}`;
   const o = $("#outBtn");
   if(o) o.onclick = async () => {
@@ -1012,6 +1034,115 @@ function viewPrivacy(){
   </div>`;
 }
 
+/* ---------- settings ---------- */
+/* Every threshold in the system lives in the database, not in code. This page
+   is what makes that worth something — the office changes a number themselves
+   instead of messaging me. */
+const RULE_UNITS = {
+  months_after_install:        { unit:"months", help:"Months after installation" },
+  months_since_last_service:   { unit:"months", help:"Months since the last visit" },
+  months_before_warranty_end:  { unit:"months", help:"Months before warranty ends" },
+  months_before_guarantee_end: { unit:"months", help:"Months before guarantee ends" },
+  days_claim_open:             { unit:"days",   help:"Days a claim stays open" },
+  fault_visit_count:           { unit:"visits", help:"Fault visits needed", window:true },
+  payment_overdue_days:        { unit:"days",   help:"Days past the due date" }
+};
+
+async function viewSettings(){
+  const [rules, settings] = await Promise.all([
+    DataSource.listRules(), DataSource.listSettings()
+  ]);
+
+  const ruleRows = rules.map(r => {
+    const u = RULE_UNITS[r.trigger_type] || { unit:"", help:"" };
+    return `<tr data-rule="${esc(r.code)}">
+      <td>
+        <label style="display:flex;align-items:center;gap:9px;margin:0;font-family:var(--sans);
+                      font-size:.93rem;letter-spacing:0;text-transform:none;color:var(--ink);cursor:pointer">
+          <input type="checkbox" data-active ${r.active ? "checked" : ""}
+                 style="width:17px;height:17px;flex:none">
+          <span><b>${esc(r.label)}</b>
+            ${r.priority === "high" ? ' <span class="pill x">Priority</span>' : ""}
+            <div class="src" style="text-transform:none;letter-spacing:0">${esc(u.help)}</div></span>
+        </label>
+      </td>
+      <td style="width:150px"><input data-offset type="number" min="1" value="${esc(r.offset_value)}"></td>
+      <td style="width:110px;color:var(--grey);font-size:.88rem">${esc(u.unit)}</td>
+      <td style="width:160px">${u.window
+        ? `<input data-window type="number" min="1" placeholder="months" value="${esc(r.window_months ?? "")}">`
+        : '<span class="src">—</span>'}</td>
+      <td style="width:110px"><button class="btn btn-s" data-save
+          style="padding:8px 14px;font-size:.85rem">Save</button></td>
+    </tr>`;
+  }).join("");
+
+  const setRows = settings.map(s => `
+    <tr data-setting="${esc(s.key)}">
+      <td><b>${esc(s.label)}</b>
+        <div class="src" style="text-transform:none;letter-spacing:0">${esc(s.description || "")}</div></td>
+      <td style="width:150px"><input data-val type="number" min="0" value="${esc(s.value)}"></td>
+      <td style="width:110px"><button class="btn btn-s" data-savesetting
+          style="padding:8px 14px;font-size:.85rem">Save</button></td>
+    </tr>`).join("");
+
+  return `<div class="page">
+    <h1>Settings</h1>
+    <p class="tiny muted" style="margin:6px 0 22px">Changes apply the next time the
+      follow-up list is refreshed. Nothing already on the list is removed.</p>
+    <div id="setMsg"></div>
+
+    <div class="card" style="margin-bottom:22px">
+      <div class="sec-h">Alerts — when should the system flag something?</div>
+      <div class="tablewrap" style="border:0;border-radius:0"><table>
+        <thead><tr><th>Alert</th><th>Value</th><th>Unit</th><th>Within</th><th></th></tr></thead>
+        <tbody id="ruleBody">${ruleRows}</tbody></table></div>
+    </div>
+
+    <div class="card">
+      <div class="sec-h">Blacklist &amp; payments</div>
+      <div class="tablewrap" style="border:0;border-radius:0"><table>
+        <thead><tr><th>Setting</th><th>Value</th><th></th></tr></thead>
+        <tbody id="setBody">${setRows}</tbody></table></div>
+    </div>
+
+    <p class="tiny muted" style="margin-top:16px">
+      Turning an alert off stops new items being created. It does not delete
+      anything already in the follow-up list.</p>
+  </div>`;
+}
+
+function wireSettings(){
+  const msg = (html) => { $("#setMsg").innerHTML = html;
+    setTimeout(() => { const m = $("#setMsg"); if(m) m.innerHTML = ""; }, 4000); };
+
+  document.querySelectorAll("#ruleBody tr[data-rule]").forEach(tr => {
+    tr.querySelector("[data-save]").onclick = async (e) => {
+      const b = e.target; b.disabled = true; b.textContent = "…";
+      try {
+        await DataSource.saveRule(
+          tr.dataset.rule,
+          tr.querySelector("[data-active]").checked,
+          tr.querySelector("[data-offset]").value,
+          tr.querySelector("[data-window]") ? tr.querySelector("[data-window]").value : null
+        );
+        msg(`<div class="ok">Saved.</div>`);
+      } catch(err){ msg(`<div class="err">${esc(err.message || err)}</div>`); }
+      b.disabled = false; b.textContent = "Save";
+    };
+  });
+
+  document.querySelectorAll("#setBody tr[data-setting]").forEach(tr => {
+    tr.querySelector("[data-savesetting]").onclick = async (e) => {
+      const b = e.target; b.disabled = true; b.textContent = "…";
+      try {
+        await DataSource.saveSetting(tr.dataset.setting, tr.querySelector("[data-val]").value);
+        msg(`<div class="ok">Saved.</div>`);
+      } catch(err){ msg(`<div class="err">${esc(err.message || err)}</div>`); }
+      b.disabled = false; b.textContent = "Save";
+    };
+  });
+}
+
 /* ---------- follow-ups ---------- */
 /* One message per rule. Staff can edit before sending - the link opens
    WhatsApp with the text pre-filled, it does not send anything by itself. */
@@ -1212,6 +1343,12 @@ async function render(){
 
     app.innerHTML = SKELETON;
     try{
+      if(r === "#/admin/settings"){
+        app.innerHTML = await viewSettings();
+        wireSettings();
+        return;
+      }
+
       if(r === "#/admin/followups"){
         app.innerHTML = await viewFollowups();
         wireFollowups();
