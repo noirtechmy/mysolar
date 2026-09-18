@@ -101,6 +101,13 @@ th{text-align:left;font-family:var(--mono);font-size:.68rem;letter-spacing:.11em
 td{padding:12px 14px;border-bottom:1px solid var(--line);font-size:.9rem;vertical-align:middle}
 tbody tr{cursor:pointer}
 tbody tr:hover{background:var(--tint)}
+/* Blacklisted rows are shaded, not just tagged — staff scanning a long list
+   should see it without reading. */
+tbody tr.row-bl{background:var(--red-bg)}
+tbody tr.row-bl:hover{background:#F7DBD7}
+tbody tr.row-bl td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+tbody tr.row-bl td{color:#6B1F18}
+tbody tr.row-bl td b{color:var(--red)}
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:7px}
 .src{font-family:var(--mono);font-size:.76rem;color:var(--grey)}
 .empty{padding:44px 20px;text-align:center;color:var(--grey)}
@@ -690,7 +697,7 @@ async function viewList(){
   });
 
   const body = shown.length ? shown.map(({r,c}) => `
-    <tr data-id="${r.id}">
+    <tr data-id="${r.id}" class="${r.blacklisted ? "row-bl" : ""}">
       <td class="mono">${esc(r.warrantyNo)}</td>
       <td><b>${esc(r.name)}</b><div class="src">${esc(r.area||"")}</div></td>
       <td>${esc(c.model.name.replace("MySolar ",""))}</td>
