@@ -37,6 +37,7 @@ button{font-family:inherit}
 .navbtns a,.navbtns button{color:#BBD8E4;text-decoration:none;font-size:.88rem;font-weight:600;padding:7px 13px;border-radius:4px;background:none;border:0;cursor:pointer}
 .navbtns a:hover,.navbtns button:hover{background:rgba(255,255,255,.1);color:#fff}
 .navbtns a.on{background:var(--blue);color:#fff}
+#langBtn{border:1px solid rgba(255,255,255,.3);border-radius:4px;font-size:.8rem;padding:5px 11px}
 
 .page{max-width:1240px;margin:0 auto;padding:26px 22px 60px}
 .narrow{max-width:620px}
@@ -412,6 +413,52 @@ const DataSource = {
 /* ==================== END OF DATA LAYER ==================== */
 
 
+/* ---------- language ----------
+   Staff are Chinese-speaking; the system defaults to English and remembers
+   whichever they pick. Anything not in the dictionary falls back to English,
+   so a missing translation degrades quietly instead of showing a blank. */
+let LANG = localStorage.getItem("mysolar_lang") || "en";
+const ZH = {
+  "Warranty registry":"保修记录","Register an installation":"登记新安装",
+  "Registered units":"已登记数量","Under guarantee":"保证期内",
+  "Under tank warranty":"保修期内","Open claims":"未结索赔",
+  "Repeat repairs":"重复维修","Unpaid visits":"未付款","Expired":"已过期",
+  "Search":"搜索","Status":"状态","Sold via":"来源","Repairs":"维修次数",
+  "All":"全部","Direct":"直销","Dealer":"经销商","Customer":"客户",
+  "Model":"型号","Installed":"安装日期","Warranty no":"保修号","Channel":"来源",
+  "Follow-ups":"跟进","Settings":"设置","Sign out":"登出",
+  "Check a warranty":"查询保修","Staff":"员工",
+  "Coverage":"保修状况","Service history":"维修记录","Claims":"索赔",
+  "Origin":"来源","Log a visit":"记录上门","Back to registry":"返回列表",
+  "Blacklisted":"黑名单","Blacklist this customer":"列入黑名单",
+  "Remove blacklist":"解除黑名单","This customer is blacklisted":"此客户已列入黑名单",
+  "Sold direct":"直销","Via dealer":"经销商",
+  "Visit date":"上门日期","Type of visit":"上门类型","Technician":"技术人员",
+  "Parts replaced":"更换零件","Chargeable":"是否收费","Amount (RM)":"金额 (RM)",
+  "What was done":"做了什么","Payment":"付款","Payment due by":"付款期限",
+  "Save visit":"保存记录","Routine service":"例常保养",
+  "Repair — fault reported":"维修 — 客户报修","Callback — same fault again":"再次上门 — 同样问题",
+  "Inspection":"检查","Installation check":"安装检查",
+  "Refresh list":"刷新清单","To follow up":"待跟进","Priority":"优先","Overdue":"逾期",
+  "Done":"完成","Snooze":"延后","Record":"记录","What happened?":"结果如何？",
+  "Remind me again in":"多久后再提醒","1 week":"一星期","1 month":"一个月","3 months":"三个月",
+  "Contacted":"已联络","Booked a visit":"已预约","Sold":"已成交",
+  "No answer":"无人接听","Not interested":"没兴趣","Wrong number":"号码错误",
+  "Service due":"保养到期","Warranty ending":"保修将到期","Payment overdue":"付款逾期",
+  "Alert":"提醒","Value":"数值","Unit":"单位","Within":"期限内","Save":"保存",
+  "Saved.":"已保存。","Setting":"设定",
+  "Alerts — when should the system flag something?":"提醒设定 — 系统几时该提醒",
+  "Blacklist & payments":"黑名单与付款",
+  "Customer name":"客户姓名","Phone":"电话","Email (optional)":"电邮（可选）",
+  "Installation address":"安装地址","Area":"地区","Install date":"安装日期",
+  "Serial number":"机身号码","Dealer name":"经销商名称","Installed by":"安装人员",
+  "Name":"姓名","Email":"电邮","Address":"地址",
+  "months":"个月","days":"天","visits":"次",
+  "Fault":"故障","paid":"已付","part paid":"部分付款","unpaid":"未付"
+};
+const t = s => (LANG === "zh" && ZH[s]) ? ZH[s] : s;
+function setLang(l){ LANG = l; localStorage.setItem("mysolar_lang", l); render(); }
+
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
 const digits = s => String(s||"").replace(/\D/g,"");
@@ -573,12 +620,15 @@ window.addEventListener("hashchange", render);
 function nav(){
   const r = route();
   $("#nav").innerHTML = `
-    <a href="#/check" class="${r==="#/check"?"on":""}">Check a warranty</a>
-    <a href="#/admin" class="${r.startsWith("#/admin")&&r!=="#/admin/followups"?"on":""}">Staff</a>
-    ${USER ? `<a href="#/admin/followups" class="${r==="#/admin/followups"?"on":""}">Follow-ups${
+    <a href="#/check" class="${r==="#/check"?"on":""}">${t("Check a warranty")}</a>
+    <a href="#/admin" class="${r.startsWith("#/admin")&&r!=="#/admin/followups"&&r!=="#/admin/settings"?"on":""}">${t("Staff")}</a>
+    ${USER ? `<a href="#/admin/followups" class="${r==="#/admin/followups"?"on":""}">${t("Follow-ups")}${
         FU_COUNT ? ` <span class="badge">${FU_COUNT}</span>` : ""}</a>` : ""}
-    ${USER ? `<a href="#/admin/settings" class="${r==="#/admin/settings"?"on":""}">Settings</a>` : ""}
-    ${USER ? `<button id="outBtn">Sign out</button>` : ""}`;
+    <button id="langBtn" title="Language">${LANG === "zh" ? "EN" : "中文"}</button>
+    ${USER ? `<a href="#/admin/settings" class="${r==="#/admin/settings"?"on":""}">${t("Settings")}</a>` : ""}
+    ${USER ? `<button id="outBtn">${t("Sign out")}</button>` : ""}`;
+  const lb = $("#langBtn");
+  if(lb) lb.onclick = () => setLang(LANG === "zh" ? "en" : "zh");
   const o = $("#outBtn");
   if(o) o.onclick = async () => {
     setSessionStart(null); await DataSource.signOut();
@@ -725,7 +775,7 @@ async function viewList(){
       <td>${esc(c.model.name.replace("MySolar ",""))}</td>
       <td class="mono">${fmt(r.installDate)}</td>
       <td>${pill(c)}${r.claims.length ? ' <span class="pill a">Open claim</span>' : ""}${
-        r.blacklisted ? ' <span class="pill x">Blacklisted</span>' : ""}${
+        r.blacklisted ? ' <span class="pill x">${t("Blacklisted")}</span>' : ""}${
         r.faultVisits >= REPEAT_THRESHOLD
           ? ` <span class="pill x">${r.faultVisits} repairs</span>`
           : r.faultVisits === 1 ? ' <span class="pill a">1 repair</span>' : ""}</td>
@@ -738,33 +788,33 @@ async function viewList(){
 
   return `<div class="page">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px">
-      <h1>Warranty registry</h1>
-      <a class="btn btn-p" href="#/admin/new">Register an installation</a>
+      <h1>${t("Warranty registry")}</h1>
+      <a class="btn btn-p" href="#/admin/new">${t("Register an installation")}</a>
     </div>
     <div class="stats">
-      <div class="stat"><b>${counts.total}</b><span>Registered units</span></div>
-      <div class="stat"><b style="color:var(--green)">${counts.guarantee}</b><span>Under guarantee</span></div>
-      <div class="stat"><b style="color:var(--blue)">${counts.warranty}</b><span>Under tank warranty</span></div>
-      <div class="stat"><b style="color:var(--amber)">${counts.openClaims}</b><span>Open claims</span></div>
-      <div class="stat"><b style="color:var(--red)">${counts.repeats}</b><span>Repeat repairs</span></div>
-      <div class="stat"><b style="color:var(--amber)">${counts.unpaid}</b><span>Unpaid visits</span></div>
+      <div class="stat"><b>${counts.total}</b><span>${t("Registered units")}</span></div>
+      <div class="stat"><b style="color:var(--green)">${counts.guarantee}</b><span>${t("Under guarantee")}</span></div>
+      <div class="stat"><b style="color:var(--blue)">${counts.warranty}</b><span>${t("Under tank warranty")}</span></div>
+      <div class="stat"><b style="color:var(--amber)">${counts.openClaims}</b><span>${t("Open claims")}</span></div>
+      <div class="stat"><b style="color:var(--red)">${counts.repeats}</b><span>${t("Repeat repairs")}</span></div>
+      <div class="stat"><b style="color:var(--amber)">${counts.unpaid}</b><span>${t("Unpaid visits")}</span></div>
     </div>
     <div class="toolbar">
-      <div class="field grow"><label for="q">Search</label>
+      <div class="field grow"><label for="q">${t("Search")}</label>
         <input id="q" placeholder="Name, warranty no, serial, phone, area, dealer" value="${esc(FILTER.q)}"></div>
-      <div class="field"><label for="fs">Status</label>
+      <div class="field"><label for="fs">${t("Status")}</label>
         <select id="fs"><option value="all">All</option><option value="guarantee">Under guarantee</option>
         <option value="warranty">Under tank warranty</option><option value="expired">Expired</option></select></div>
-      <div class="field"><label for="fc">Sold via</label>
+      <div class="field"><label for="fc">${t("Sold via")}</label>
         <select id="fc"><option value="all">All</option><option value="direct">Direct</option>
         <option value="dealer">Dealer</option></select></div>
-      <div class="field"><label for="ff">Repairs</label>
+      <div class="field"><label for="ff">${t("Repairs")}</label>
         <select id="ff"><option value="all">All</option>
         <option value="1">1 or more</option>
         <option value="2">2 or more (flagged)</option></select></div>
     </div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Warranty no</th><th>Customer</th><th>Model</th><th>Installed</th><th>Status</th><th>Channel</th></tr></thead>
+      <thead><tr><th>${t("Warranty no")}</th><th>${t("Customer")}</th><th>${t("Model")}</th><th>${t("Installed")}</th><th>${t("Status")}</th><th>${t("Channel")}</th></tr></thead>
       <tbody id="tb">${body}</tbody></table></div>
     <p class="tiny muted" style="margin-top:12px">Showing ${shown.length} of ${counts.total}. Click any row to open the record.</p>
   </div>`;
@@ -781,13 +831,13 @@ async function viewDetail(id){
     <div class="claim"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
       <b>${esc(s.type)}</b>
       <span style="display:flex;gap:6px;align-items:center">
-        ${s.fault ? '<span class="pill x">Fault</span>' : ''}
+        ${s.fault ? `<span class="pill x">${t("Fault")}</span>` : ''}
         ${s.chargeable ? `<span class="pill ${
             s.payStatus === "paid" ? "g" :
             (s.dueOn && new Date(s.dueOn+"T00:00:00") < new Date()) ? "x" : "a"
           }">RM ${esc(s.amount ?? "—")} ${
-            s.payStatus === "paid" ? "paid" :
-            s.payStatus === "partial" ? "part paid" : "unpaid"}</span>` : ''}
+            s.payStatus === "paid" ? t("paid") :
+            s.payStatus === "partial" ? t("part paid") : t("unpaid")}</span>` : ''}
         <span class="src">${fmt(s.date)}</span></span></div>
       <div class="muted tiny">${esc(s.tech || "—")}${s.note ? " — " + esc(s.note) : ""}</div>
       ${s.parts ? `<div class="muted tiny">Parts: ${esc(s.parts)}</div>` : ""}
@@ -807,44 +857,44 @@ async function viewDetail(id){
       out — one more fault visit and this will be flagged to the owners.</div>
     </div>` : "";
 
-  const visitOpts = VISIT_TYPES.map((t,i) =>
-    `<option value="${i}">${t.v}</option>`).join("");
+  const visitOpts = VISIT_TYPES.map((tp,i) =>
+    `<option value="${i}">${t(tp.v)}</option>`).join("");
 
   const svcForm = `
     <div class="fu-panel" id="svcPanel">
       <div class="row2">
-        <div class="field"><label for="sv_date">Visit date</label>
+        <div class="field"><label for="sv_date">${t("Visit date")}</label>
           <input id="sv_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
-        <div class="field"><label for="sv_type">Type of visit</label>
+        <div class="field"><label for="sv_type">${t("Type of visit")}</label>
           <select id="sv_type">${visitOpts}</select></div>
       </div>
       <div class="row2">
-        <div class="field"><label for="sv_tech">Technician</label>
+        <div class="field"><label for="sv_tech">${t("Technician")}</label>
           <input id="sv_tech" placeholder="Name of who attended"></div>
-        <div class="field"><label for="sv_parts">Parts replaced</label>
+        <div class="field"><label for="sv_parts">${t("Parts replaced")}</label>
           <input id="sv_parts" placeholder="Leave blank if none"></div>
       </div>
       <div class="row2">
-        <div class="field"><label for="sv_chg">Chargeable</label>
+        <div class="field"><label for="sv_chg">${t("Chargeable")}</label>
           <select id="sv_chg"><option value="no">No — under warranty</option>
                               <option value="yes">Yes — customer charged</option></select></div>
-        <div class="field"><label for="sv_amt">Amount (RM)</label>
+        <div class="field"><label for="sv_amt">${t("Amount (RM)")}</label>
           <input id="sv_amt" type="number" step="0.01" placeholder="0.00"></div>
       </div>
       <div class="row2" id="sv_payrow" style="display:none">
-        <div class="field"><label for="sv_pay">Payment</label>
+        <div class="field"><label for="sv_pay">${t("Payment")}</label>
           <select id="sv_pay">
             <option value="unpaid">Not paid yet</option>
             <option value="partial">Partly paid</option>
             <option value="paid">Paid in full</option>
           </select></div>
-        <div class="field"><label for="sv_due">Payment due by</label>
+        <div class="field"><label for="sv_due">${t("Payment due by")}</label>
           <input id="sv_due" type="date"></div>
       </div>
-      <div class="field"><label for="sv_note">What was done</label>
+      <div class="field"><label for="sv_note">${t("What was done")}</label>
         <input id="sv_note" placeholder="e.g. Checked thermostat, cleaned panel"></div>
       <div id="svErr"></div>
-      <button class="btn btn-p" id="sv_save">Save visit</button>
+      <button class="btn btn-p" id="sv_save">${t("Save visit")}</button>
     </div>`;
   const claims = r.claims.length ? r.claims.slice().reverse().map(cl => `
     <div class="claim"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
@@ -854,25 +904,25 @@ async function viewDetail(id){
     : `<div class="claim muted tiny">No claims raised.</div>`;
 
   return `<div class="page">
-    <button class="crumb" onclick="location.hash='#/admin/list'">&larr; Back to registry</button>
+    <button class="crumb" onclick="location.hash='#/admin/list'">&larr; ${t("Back to registry")}</button>
     <div style="display:flex;justify-content:space-between;align-items:start;gap:14px;flex-wrap:wrap;margin-bottom:16px">
       <div><h1>${esc(r.name)}</h1>
         <div class="src">${esc(r.warrantyNo)}${r.serial?" · "+esc(r.serial):""}</div></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap">${pill(c)}
-        ${r.blacklisted ? '<span class="pill x">Blacklisted</span>' : ''}
-        <span class="pill ${r.channel==="direct"?"g":"n"}">${r.channel==="direct"?"Sold direct":"Via dealer"}</span></div>
+        ${r.blacklisted ? '<span class="pill x">${t("Blacklisted")}</span>' : ''}
+        <span class="pill ${r.channel==="direct"?"g":"n"}">${r.channel==="direct"?t("Sold direct"):t("Via dealer")}</span></div>
     </div>
     ${r.blacklisted ? `<div class="card" style="background:var(--red-bg);border-color:#F0C7C2;margin-bottom:18px">
       <div class="card-pad" style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center">
-        <div><b style="color:var(--red)">This customer is blacklisted</b>
+        <div><b style="color:var(--red)">${t("This customer is blacklisted")}</b>
           <div class="tiny" style="color:var(--red)">${esc(r.blacklistReason || "No reason recorded")}</div></div>
-        <button class="btn btn-s" id="blOff">Remove blacklist</button>
+        <button class="btn btn-s" id="blOff">${t("Remove blacklist")}</button>
       </div></div>`
     : `<div style="margin-bottom:18px"><button class="btn btn-s" id="blOn"
-         style="padding:7px 13px;font-size:.85rem">Blacklist this customer</button></div>`}
+         style="padding:7px 13px;font-size:.85rem">${t("Blacklist this customer")}</button></div>`}
     <div class="detail-grid">
       <div style="display:flex;flex-direction:column;gap:18px">
-        <div class="card"><div class="sec-h">Coverage</div>
+        <div class="card"><div class="sec-h">${t("Coverage")}</div>
           <div class="timeline" style="border-bottom:0">
             <div class="bar"><span class="g" style="width:${c.pctGuarantee}%"></span>
               <i style="width:${c.pctElapsed}%;opacity:.55"></i></div>
@@ -887,13 +937,13 @@ async function viewDetail(id){
             <dt>Tank warranty ends (${c.model.warrantyYears} yr)</dt><dd>${fmt(c.wEnd)}</dd>
           </dl></div>
         <div class="card"><div class="sec-h">
-          <span>Service history${faults.length ? ` <span class="pill ${repeatFlag?"x":"a"}">${faults.length} fault${faults.length===1?"":"s"} / ${REPEAT_WINDOW_MONTHS}mth</span>` : ""}</span>
-          <button class="btn btn-s" style="padding:6px 12px;font-size:.85rem" id="addSvc">Log a visit</button></div>
+          <span>${t("Service history")}${faults.length ? ` <span class="pill ${repeatFlag?"x":"a"}">${faults.length} fault${faults.length===1?"":"s"} / ${REPEAT_WINDOW_MONTHS}mth</span>` : ""}</span>
+          <button class="btn btn-s" style="padding:6px 12px;font-size:.85rem" id="addSvc">${t("Log a visit")}</button></div>
           ${repeatBanner}${svcForm}${svc}</div>
-        <div class="card"><div class="sec-h">Claims</div>${claims}</div>
+        <div class="card"><div class="sec-h">${t("Claims")}</div>${claims}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:18px">
-        <div class="card"><div class="sec-h">Customer</div>
+        <div class="card"><div class="sec-h">${t("Customer")}</div>
           <dl class="kv">
             <dt>Name</dt><dd>${esc(r.name)}</dd>
             <dt>Phone</dt><dd>${esc(r.phone)}</dd>
@@ -906,7 +956,7 @@ async function viewDetail(id){
             <a class="btn btn-s btn-full" target="_blank" rel="noopener"
               href="https://wa.me/${waNumber(r.phone)}">WhatsApp customer</a></div>
         </div>
-        <div class="card"><div class="sec-h">Origin</div>
+        <div class="card"><div class="sec-h">${t("Origin")}</div>
           <dl class="kv">
             <dt>Channel</dt><dd>${r.channel==="direct"?"Direct":"Dealer"}</dd>
             <dt>Dealer</dt><dd>${esc(r.dealer||"—")}</dd>
@@ -919,27 +969,27 @@ function viewNew(){
   const opts = Object.entries(MODELS)
     .map(([k,m]) => `<option value="${k}">${m.name} — ${m.gallons} gal</option>`).join("");
   return `<div class="page narrow">
-    <button class="crumb" onclick="location.hash='#/admin/list'">&larr; Back to registry</button>
+    <button class="crumb" onclick="location.hash='#/admin/list'">&larr; ${t("Back to registry")}</button>
     <div class="card card-pad">
       <h2>Register an installation</h2>
       <p class="tiny muted">Warranty number is generated by the database.</p>
       <div id="nErr"></div>
-      <div class="field"><label for="n_name">Customer name</label><input id="n_name"></div>
+      <div class="field"><label for="n_name">${t("Customer name")}</label><input id="n_name"></div>
       <div class="row2">
-        <div class="field"><label for="n_phone">Phone</label><input id="n_phone" placeholder="012-345 6789"></div>
+        <div class="field"><label for="n_phone">${t("Phone")}</label><input id="n_phone" placeholder="012-345 6789"></div>
         <div class="field"><label for="n_email">Email (optional)</label><input id="n_email"></div></div>
-      <div class="field"><label for="n_addr">Installation address</label><input id="n_addr"></div>
+      <div class="field"><label for="n_addr">${t("Installation address")}</label><input id="n_addr"></div>
       <div class="row2">
-        <div class="field"><label for="n_area">Area</label><input id="n_area" placeholder="Puchong"></div>
-        <div class="field"><label for="n_date">Install date</label><input id="n_date" type="date"></div></div>
+        <div class="field"><label for="n_area">${t("Area")}</label><input id="n_area" placeholder="Puchong"></div>
+        <div class="field"><label for="n_date">${t("Install date")}</label><input id="n_date" type="date"></div></div>
       <div class="row2">
-        <div class="field"><label for="n_model">Model</label><select id="n_model">${opts}</select></div>
-        <div class="field"><label for="n_serial">Serial number</label><input id="n_serial" placeholder="Optional"></div></div>
+        <div class="field"><label for="n_model">${t("Model")}</label><select id="n_model">${opts}</select></div>
+        <div class="field"><label for="n_serial">${t("Serial number")}</label><input id="n_serial" placeholder="Optional"></div></div>
       <div class="row2">
-        <div class="field"><label for="n_channel">Sold via</label>
+        <div class="field"><label for="n_channel">${t("Sold via")}</label>
           <select id="n_channel"><option value="direct">Direct</option><option value="dealer">Dealer</option></select></div>
-        <div class="field"><label for="n_dealer">Dealer name</label><input id="n_dealer" placeholder="Blank if direct"></div></div>
-      <div class="field"><label for="n_installer">Installed by</label><input id="n_installer"></div>
+        <div class="field"><label for="n_dealer">${t("Dealer name")}</label><input id="n_dealer" placeholder="Blank if direct"></div></div>
+      <div class="field"><label for="n_installer">${t("Installed by")}</label><input id="n_installer"></div>
 
       <div class="consent">
         <label style="display:flex;gap:10px;align-items:flex-start;font-family:var(--body);
@@ -1067,12 +1117,12 @@ async function viewSettings(){
         </label>
       </td>
       <td style="width:150px"><input data-offset type="number" min="1" value="${esc(r.offset_value)}"></td>
-      <td style="width:110px;color:var(--grey);font-size:.88rem">${esc(u.unit)}</td>
+      <td style="width:110px;color:var(--grey);font-size:.88rem">${esc(t(u.unit))}</td>
       <td style="width:160px">${u.window
         ? `<input data-window type="number" min="1" placeholder="months" value="${esc(r.window_months ?? "")}">`
         : '<span class="src">—</span>'}</td>
       <td style="width:110px"><button class="btn btn-s" data-save
-          style="padding:8px 14px;font-size:.85rem">Save</button></td>
+          style="padding:8px 14px;font-size:.85rem">${t("Save")}</button></td>
     </tr>`;
   }).join("");
 
@@ -1082,26 +1132,26 @@ async function viewSettings(){
         <div class="src" style="text-transform:none;letter-spacing:0">${esc(s.description || "")}</div></td>
       <td style="width:150px"><input data-val type="number" min="0" value="${esc(s.value)}"></td>
       <td style="width:110px"><button class="btn btn-s" data-savesetting
-          style="padding:8px 14px;font-size:.85rem">Save</button></td>
+          style="padding:8px 14px;font-size:.85rem">${t("Save")}</button></td>
     </tr>`).join("");
 
   return `<div class="page">
-    <h1>Settings</h1>
+    <h1>${t("Settings")}</h1>
     <p class="tiny muted" style="margin:6px 0 22px">Changes apply the next time the
       follow-up list is refreshed. Nothing already on the list is removed.</p>
     <div id="setMsg"></div>
 
     <div class="card" style="margin-bottom:22px">
-      <div class="sec-h">Alerts — when should the system flag something?</div>
+      <div class="sec-h">${t("Alerts — when should the system flag something?")}</div>
       <div class="tablewrap" style="border:0;border-radius:0"><table>
-        <thead><tr><th>Alert</th><th>Value</th><th>Unit</th><th>Within</th><th></th></tr></thead>
+        <thead><tr><th>${t("Alert")}</th><th>${t("Value")}</th><th>${t("Unit")}</th><th>${t("Within")}</th><th></th></tr></thead>
         <tbody id="ruleBody">${ruleRows}</tbody></table></div>
     </div>
 
     <div class="card">
-      <div class="sec-h">Blacklist &amp; payments</div>
+      <div class="sec-h">${t("Blacklist & payments")}</div>
       <div class="tablewrap" style="border:0;border-radius:0"><table>
-        <thead><tr><th>Setting</th><th>Value</th><th></th></tr></thead>
+        <thead><tr><th>${t("Setting")}</th><th>${t("Value")}</th><th></th></tr></thead>
         <tbody id="setBody">${setRows}</tbody></table></div>
     </div>
 
@@ -1125,7 +1175,7 @@ function wireSettings(){
           tr.querySelector("[data-offset]").value,
           tr.querySelector("[data-window]") ? tr.querySelector("[data-window]").value : null
         );
-        msg(`<div class="ok">Saved.</div>`);
+        msg(`<div class="ok">${t("Saved.")}</div>`);
       } catch(err){ msg(`<div class="err">${esc(err.message || err)}</div>`); }
       b.disabled = false; b.textContent = "Save";
     };
@@ -1136,7 +1186,7 @@ function wireSettings(){
       const b = e.target; b.disabled = true; b.textContent = "…";
       try {
         await DataSource.saveSetting(tr.dataset.setting, tr.querySelector("[data-val]").value);
-        msg(`<div class="ok">Saved.</div>`);
+        msg(`<div class="ok">${t("Saved.")}</div>`);
       } catch(err){ msg(`<div class="err">${esc(err.message || err)}</div>`); }
       b.disabled = false; b.textContent = "Save";
     };
@@ -1200,7 +1250,7 @@ async function viewFollowups(){
     <div class="fu" data-fu="${r.id}">
       <div class="fu-main">
         <div>
-          <span class="pill ${r.priority==="high"?"x":r.priority==="normal"?"w":"n"}">${esc(r.label)}</span>
+          <span class="pill ${r.priority==="high"?"x":r.priority==="normal"?"w":"n"}">${esc(t(r.label))}</span>
           ${r.days_overdue > 0 ? `<span class="pill a">${overdueText(r.days_overdue)}</span>` : ""}
           ${r.rule_code === "repeat_visits" && r.fault_visits_12m
               ? `<span class="pill x">${r.fault_visits_12m} repairs / 12mth</span>` : ""}
@@ -1209,23 +1259,23 @@ async function viewFollowups(){
         </div>
         <div class="fu-acts">
           <a class="btn btn-p" style="padding:9px 14px;font-size:.87rem" target="_blank" rel="noopener" href="${wa}">WhatsApp</a>
-          <button class="btn btn-s" style="padding:9px 14px;font-size:.87rem" data-act="done">Done</button>
-          <button class="btn btn-s" style="padding:9px 14px;font-size:.87rem" data-act="snooze">Snooze</button>
-          <button class="btn btn-s" style="padding:9px 14px;font-size:.87rem" data-act="open">Record</button>
+          <button class="btn btn-s" style="padding:9px 14px;font-size:.87rem" data-act="done">${t("Done")}</button>
+          <button class="btn btn-s" style="padding:9px 14px;font-size:.87rem" data-act="snooze">${t("Snooze")}</button>
+          <button class="btn btn-s" style="padding:9px 14px;font-size:.87rem" data-act="open">${t("Record")}</button>
         </div>
       </div>
       <div class="fu-panel" data-panel="done">
-        <label>What happened?</label>
+        <label>${t("What happened?")}</label>
         <div class="fu-opts">${OUTCOMES.map(([v,l]) =>
-          `<button class="btn btn-s" style="padding:8px 13px;font-size:.86rem" data-outcome="${v}">${l}</button>`).join("")}</div>
+          `<button class="btn btn-s" style="padding:8px 13px;font-size:.86rem" data-outcome="${v}">${t(l)}</button>`).join("")}</div>
         <input data-note placeholder="Note (optional)" style="margin-top:10px">
       </div>
       <div class="fu-panel" data-panel="snooze">
-        <label>Remind me again in</label>
+        <label>${t("Remind me again in")}</label>
         <div class="fu-opts">
-          <button class="btn btn-s" style="padding:8px 13px;font-size:.86rem" data-snooze="7">1 week</button>
-          <button class="btn btn-s" style="padding:8px 13px;font-size:.86rem" data-snooze="30">1 month</button>
-          <button class="btn btn-s" style="padding:8px 13px;font-size:.86rem" data-snooze="90">3 months</button>
+          <button class="btn btn-s" style="padding:8px 13px;font-size:.86rem" data-snooze="7">${t("1 week")}</button>
+          <button class="btn btn-s" style="padding:8px 13px;font-size:.86rem" data-snooze="30">${t("1 month")}</button>
+          <button class="btn btn-s" style="padding:8px 13px;font-size:.86rem" data-snooze="90">${t("3 months")}</button>
         </div>
       </div>
     </div>`;
@@ -1235,17 +1285,17 @@ async function viewFollowups(){
 
   return `<div class="page">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px">
-      <h1>Follow-ups</h1>
-      <button class="btn btn-s" id="fuGen">Refresh list</button>
+      <h1>${t("Follow-ups")}</h1>
+      <button class="btn btn-s" id="fuGen">${t("Refresh list")}</button>
     </div>
     <div class="stats" style="grid-template-columns:repeat(3,1fr)">
-      <div class="stat"><b>${counts.all}</b><span>To follow up</span></div>
-      <div class="stat"><b style="color:var(--red)">${counts.high}</b><span>Priority</span></div>
-      <div class="stat"><b style="color:var(--amber)">${counts.overdue}</b><span>Overdue</span></div>
+      <div class="stat"><b>${counts.all}</b><span>${t("To follow up")}</span></div>
+      <div class="stat"><b style="color:var(--red)">${counts.high}</b><span>${t("Priority")}</span></div>
+      <div class="stat"><b style="color:var(--amber)">${counts.overdue}</b><span>${t("Overdue")}</span></div>
     </div>
     <div class="tabs">${FU_TABS.map(([k,label]) => {
       const n = k === "all" ? rows.length : rows.filter(r => r.rule_code === k).length;
-      return `<button class="tab ${FU_FILTER===k?"on":""}" data-tab="${k}">${label}${
+      return `<button class="tab ${FU_FILTER===k?"on":""}" data-tab="${k}">${t(label)}${
         n ? ` <span class="tabn">${n}</span>` : ""}</button>`;
     }).join("")}</div>
     ${body}
@@ -1422,6 +1472,13 @@ async function render(){
           try {
             const cust = await sb.from("installations").select("customer_id").eq("id", m[1]).single();
             await DataSource.setBlacklist(cust.data.customer_id, on, reason.trim());
+            notify("blacklist_changed", {
+              customer_name: r.name, phone: r.phone, area: r.area,
+              warranty_no:   r.warrantyNo,
+              action:        on ? "added" : "removed",
+              reason:        reason.trim(),
+              staff:         USER?.email || "staff"
+            });
             render();
           } catch(e){ alert(e.message || e); }
         };
