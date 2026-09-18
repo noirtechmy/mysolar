@@ -118,6 +118,11 @@ tbody tr:hover{background:var(--tint)}
 .fu-panel{display:none;padding:15px 18px;border-top:1px solid var(--line);background:var(--tint)}
 .fu-panel.show{display:block}
 .fu-opts{display:flex;gap:7px;flex-wrap:wrap}
+.sk{height:46px;background:linear-gradient(90deg,#EDF1F3 25%,#F6F8F9 50%,#EDF1F3 75%);
+  background-size:200% 100%;animation:shimmer 1.2s linear infinite;border-radius:6px;margin-bottom:10px}
+.sk-lg{height:82px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:10px}
 .tab{background:#fff;border:1.5px solid var(--line);border-radius:5px;padding:9px 15px;
   font-size:.9rem;font-weight:600;color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:7px}
@@ -146,7 +151,7 @@ tbody tr:hover{background:var(--tint)}
   </div>
 </div>
 
-<div id="app"><div class="spin">Loading…</div></div>
+<div id="app"><div class="page"><div class="sk sk-lg"></div><div class="sk"></div><div class="sk"></div></div></div>
 
 <script>
 /* ============================================================================
@@ -215,17 +220,40 @@ function rowFromView(v, service = [], claims = []) {
   };
 }
 
+/* Supabase caps any single response at 1000 rows. With 3000 warranties the
+   old code silently showed 1000 and no error. Fetch in pages instead, then
+   cache — the registry was being re-downloaded on every keystroke. */
+let LIST_CACHE = { rows: null, at: 0 };
+const CACHE_MS = 60000;
+const clearListCache = () => { LIST_CACHE = { rows: null, at: 0 }; };
+
 const DataSource = {
-  async listWarranties(){
-    const { data: rows, error } = await sb.from("v_installations")
-      .select("*").order("install_date", { ascending:false });
-    if (error) throw error;
+  async _fetchAllInstallations(){
+    const out = [], size = 1000;
+    for (let from = 0; from < 100000; from += size) {
+      const { data, error } = await sb.from("v_installations")
+        .select("*").order("install_date", { ascending:false })
+        .range(from, from + size - 1);
+      if (error) throw error;
+      out.push(...data);
+      if (data.length < size) break;
+    }
+    return out;
+  },
+
+  async listWarranties(force = false){
+    if (!force && LIST_CACHE.rows && Date.now() - LIST_CACHE.at < CACHE_MS) {
+      return LIST_CACHE.rows;
+    }
+    const rows = await this._fetchAllInstallations();
     const { data: open } = await sb.from("claims")
       .select("installation_id, raised_on, issue, status, resolution")
       .in("status", ["open","in_progress"]);
     const by = {};
     (open || []).forEach(c => { (by[c.installation_id] ||= []).push(c); });
-    return rows.map(v => rowFromView(v, [], by[v.id] || []));
+    const mapped = rows.map(v => rowFromView(v, [], by[v.id] || []));
+    LIST_CACHE = { rows: mapped, at: Date.now() };
+    return mapped;
   },
 
   async getById(id){
@@ -265,6 +293,7 @@ const DataSource = {
       p_consent: p.consent === true, p_notice_ver: 'v1'
     });
     if (error) throw error;
+    clearListCache();
     return await this.getById(data);
   },
 
@@ -281,6 +310,7 @@ const DataSource = {
       notes:           visit.note   || null
     });
     if (error) throw error;
+    clearListCache();
     return await this.getById(id);
   },
 
@@ -346,6 +376,17 @@ function fmt(d){ const dt=(typeof d==="string")?new Date(d+"T00:00:00"):d;
   return dt.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}); }
 function daysBetween(a,b){ return Math.round((b-a)/86400000); }
 
+/* "4352d overdue" is arithmetically right and useless. Historical records
+   will all look like this after data entry. */
+function overdueText(days){
+  const d = Number(days) || 0;
+  if (d <= 0) return "";
+  if (d < 60)  return d + "d overdue";
+  if (d < 365) return Math.round(d/30) + " mths overdue";
+  const y = Math.floor(d/365);
+  return "overdue " + y + (y === 1 ? " yr+" : " yrs+");
+}
+
 function coverage(row){
   const m = MODELS[row.model];
   const start = new Date(row.installDate+"T00:00:00");
@@ -385,6 +426,11 @@ function faultVisitsInWindow(service){
   cutoff.setMonth(cutoff.getMonth() - REPEAT_WINDOW_MONTHS);
   return service.filter(s => s.fault && new Date(s.date + "T00:00:00") >= cutoff);
 }
+
+const SKELETON = `<div class="page">
+  <div class="sk sk-lg"></div>
+  <div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div>
+</div>`;
 
 /* ---------- state ---------- */
 let USER = null;
@@ -964,7 +1010,7 @@ async function viewFollowups(){
       <div class="fu-main">
         <div>
           <span class="pill ${r.priority==="high"?"x":r.priority==="normal"?"w":"n"}">${esc(r.label)}</span>
-          ${r.days_overdue > 0 ? `<span class="pill a">${r.days_overdue}d overdue</span>` : ""}
+          ${r.days_overdue > 0 ? `<span class="pill a">${overdueText(r.days_overdue)}</span>` : ""}
           ${r.rule_code === "repeat_visits" && r.fault_visits_12m
               ? `<span class="pill x">${r.fault_visits_12m} repairs / 12mth</span>` : ""}
           <div class="fu-name">${esc(r.customer_name)}</div>
@@ -1104,7 +1150,7 @@ async function render(){
       return;
     }
 
-    app.innerHTML = `<div class="spin">Loading…</div>`;
+    app.innerHTML = SKELETON;
     try{
       if(r === "#/admin/followups"){
         app.innerHTML = await viewFollowups();
