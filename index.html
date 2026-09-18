@@ -87,7 +87,7 @@ dl.kv dd{margin:0;font-family:var(--mono);font-size:.89rem;text-align:right}
 .svc-item:last-child{border-bottom:0}
 .svc-item .d{font-family:var(--mono);font-size:.82rem;color:var(--grey);white-space:nowrap;min-width:92px}
 
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
 @media(max-width:1000px){.stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:680px){.stats{grid-template-columns:repeat(2,1fr)}}
 .stat{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:15px 17px}
@@ -209,12 +209,18 @@ function rowFromView(v, service = [], claims = []) {
     installDate: v.install_date, channel: v.channel,
     dealer: v.dealer_name || "", installer: v.installer || "",
     faultVisits: Number(v.fault_visits_12m || 0),
+    unpaidVisits: Number(v.unpaid_visits || 0),
+    blacklisted: v.blacklisted === true,
+    blacklistReason: v.blacklist_reason || "",
     service: service.map(s => ({ date:s.visit_date, type:s.visit_type,
                                  tech:s.technician || "", note:s.notes || "",
                                  fault: s.is_fault_visit === true,
                                  parts: s.parts_replaced || "",
                                  chargeable: s.chargeable === true,
-                                 amount: s.amount })),
+                                 amount: s.amount,
+                                 payStatus: s.payment_status || "not_applicable",
+                                 amountPaid: s.amount_paid,
+                                 paidOn: s.paid_on, dueOn: s.due_on })),
     claims:  claims.map(c => ({ date:c.raised_on, issue:c.issue,
                                 status:c.status, resolution:c.resolution || "" }))
   };
@@ -307,11 +313,28 @@ const DataSource = {
       parts_replaced:  visit.parts  || null,
       chargeable:      visit.chargeable === true,
       amount:          visit.amount != null && visit.amount !== "" ? Number(visit.amount) : null,
+      payment_status:  visit.chargeable === true ? (visit.payStatus || "unpaid") : "not_applicable",
+      amount_paid:     visit.amountPaid != null && visit.amountPaid !== "" ? Number(visit.amountPaid) : null,
+      paid_on:         visit.paidOn || null,
+      due_on:          visit.chargeable === true ? (visit.dueOn || null) : null,
       notes:           visit.note   || null
     });
     if (error) throw error;
     clearListCache();
     return await this.getById(id);
+  },
+
+  async setBlacklist(customerId, on, reason){
+    const { error } = await sb.rpc("set_blacklist", {
+      p_customer_id: customerId, p_on: on, p_reason: reason });
+    if (error) throw error;
+    clearListCache();
+  },
+
+  async blacklistHistory(customerId){
+    const { data } = await sb.from("blacklist_events").select("*")
+      .eq("customer_id", customerId).order("created_at", { ascending:false });
+    return data || [];
   },
 
   /* --- follow-ups --------------------------------------------------- */
@@ -653,7 +676,8 @@ async function viewList(){
     guarantee: wc.filter(x=>x.c.state==="guarantee").length,
     warranty:  wc.filter(x=>x.c.state==="warranty").length,
     openClaims:wc.filter(x=>x.r.claims.some(c=>c.status==="open"||c.status==="in_progress")).length,
-    repeats:   wc.filter(x=>x.r.faultVisits >= REPEAT_THRESHOLD).length
+    repeats:   wc.filter(x=>x.r.faultVisits >= REPEAT_THRESHOLD).length,
+    unpaid:    wc.filter(x=>x.r.unpaidVisits > 0).length
   };
   const q = FILTER.q.toLowerCase();
   const shown = wc.filter(({r,c}) => {
@@ -672,6 +696,7 @@ async function viewList(){
       <td>${esc(c.model.name.replace("MySolar ",""))}</td>
       <td class="mono">${fmt(r.installDate)}</td>
       <td>${pill(c)}${r.claims.length ? ' <span class="pill a">Open claim</span>' : ""}${
+        r.blacklisted ? ' <span class="pill x">Blacklisted</span>' : ""}${
         r.faultVisits >= REPEAT_THRESHOLD
           ? ` <span class="pill x">${r.faultVisits} repairs</span>`
           : r.faultVisits === 1 ? ' <span class="pill a">1 repair</span>' : ""}</td>
@@ -693,6 +718,7 @@ async function viewList(){
       <div class="stat"><b style="color:var(--blue)">${counts.warranty}</b><span>Under tank warranty</span></div>
       <div class="stat"><b style="color:var(--amber)">${counts.openClaims}</b><span>Open claims</span></div>
       <div class="stat"><b style="color:var(--red)">${counts.repeats}</b><span>Repeat repairs</span></div>
+      <div class="stat"><b style="color:var(--amber)">${counts.unpaid}</b><span>Unpaid visits</span></div>
     </div>
     <div class="toolbar">
       <div class="field grow"><label for="q">Search</label>
@@ -727,7 +753,12 @@ async function viewDetail(id){
       <b>${esc(s.type)}</b>
       <span style="display:flex;gap:6px;align-items:center">
         ${s.fault ? '<span class="pill x">Fault</span>' : ''}
-        ${s.chargeable ? `<span class="pill n">RM ${esc(s.amount ?? "—")}</span>` : ''}
+        ${s.chargeable ? `<span class="pill ${
+            s.payStatus === "paid" ? "g" :
+            (s.dueOn && new Date(s.dueOn+"T00:00:00") < new Date()) ? "x" : "a"
+          }">RM ${esc(s.amount ?? "—")} ${
+            s.payStatus === "paid" ? "paid" :
+            s.payStatus === "partial" ? "part paid" : "unpaid"}</span>` : ''}
         <span class="src">${fmt(s.date)}</span></span></div>
       <div class="muted tiny">${esc(s.tech || "—")}${s.note ? " — " + esc(s.note) : ""}</div>
       ${s.parts ? `<div class="muted tiny">Parts: ${esc(s.parts)}</div>` : ""}
@@ -771,6 +802,16 @@ async function viewDetail(id){
         <div class="field"><label for="sv_amt">Amount (RM)</label>
           <input id="sv_amt" type="number" step="0.01" placeholder="0.00"></div>
       </div>
+      <div class="row2" id="sv_payrow" style="display:none">
+        <div class="field"><label for="sv_pay">Payment</label>
+          <select id="sv_pay">
+            <option value="unpaid">Not paid yet</option>
+            <option value="partial">Partly paid</option>
+            <option value="paid">Paid in full</option>
+          </select></div>
+        <div class="field"><label for="sv_due">Payment due by</label>
+          <input id="sv_due" type="date"></div>
+      </div>
       <div class="field"><label for="sv_note">What was done</label>
         <input id="sv_note" placeholder="e.g. Checked thermostat, cleaned panel"></div>
       <div id="svErr"></div>
@@ -789,8 +830,17 @@ async function viewDetail(id){
       <div><h1>${esc(r.name)}</h1>
         <div class="src">${esc(r.warrantyNo)}${r.serial?" · "+esc(r.serial):""}</div></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap">${pill(c)}
+        ${r.blacklisted ? '<span class="pill x">Blacklisted</span>' : ''}
         <span class="pill ${r.channel==="direct"?"g":"n"}">${r.channel==="direct"?"Sold direct":"Via dealer"}</span></div>
     </div>
+    ${r.blacklisted ? `<div class="card" style="background:var(--red-bg);border-color:#F0C7C2;margin-bottom:18px">
+      <div class="card-pad" style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center">
+        <div><b style="color:var(--red)">This customer is blacklisted</b>
+          <div class="tiny" style="color:var(--red)">${esc(r.blacklistReason || "No reason recorded")}</div></div>
+        <button class="btn btn-s" id="blOff">Remove blacklist</button>
+      </div></div>`
+    : `<div style="margin-bottom:18px"><button class="btn btn-s" id="blOn"
+         style="padding:7px 13px;font-size:.85rem">Blacklist this customer</button></div>`}
     <div class="detail-grid">
       <div style="display:flex;flex-direction:column;gap:18px">
         <div class="card"><div class="sec-h">Coverage</div>
@@ -971,6 +1021,8 @@ const WA_TEMPLATES = {
     `Hi ${r.customer_name}, this is MySolar. It's been a while since your last service. Regular servicing keeps the system running efficiently — would you like us to arrange a visit?`,
   repeat_visits: r =>
     `Hi ${r.customer_name}, this is MySolar. We noticed your system has needed attention more than once recently. We'd like to send a senior technician to look at it properly rather than keep changing parts. When would suit you?`,
+  payment_overdue: r =>
+    `Hi ${r.customer_name}, this is MySolar. We noticed a service payment is still outstanding. Could you let us know when it will be settled? Happy to send the invoice again if needed.`,
   claim_stale: r =>
     `Hi ${r.customer_name}, this is MySolar following up on the issue you reported. Sorry for the delay — we'd like to get this sorted for you. When would suit for a visit?`
 };
@@ -989,6 +1041,7 @@ const FU_TABS = [
   ["repeat_visits", "Repeat repairs"],
   ["service_due",   "Service due"],
   ["warranty_end",  "Warranty ending"],
+  ["payment_overdue","Payment overdue"],
   ["claim_stale",   "Claims"]
 ];
 
@@ -1205,6 +1258,33 @@ async function render(){
         const panel = $("#svcPanel");
         if(btn && panel) btn.onclick = () => panel.classList.toggle("show");
 
+        const payRow = $("#sv_payrow"), chg = $("#sv_chg");
+        const syncPay = () => {
+          if(!payRow || !chg) return;
+          payRow.style.display = chg.value === "yes" ? "" : "none";
+          const d = $("#sv_due");
+          if(d && !d.value){
+            const due = new Date(); due.setDate(due.getDate() + 30);
+            d.value = due.toISOString().slice(0,10);
+          }
+        };
+        if(chg){ chg.onchange = syncPay; syncPay(); }
+
+        const doBl = async (on) => {
+          const reason = prompt(on
+            ? "Why is this customer being blacklisted?"
+            : "Why is the blacklist being removed?");
+          if(!reason || reason.trim().length < 3){ alert("A reason is required."); return; }
+          try {
+            const cust = await sb.from("installations").select("customer_id").eq("id", m[1]).single();
+            await DataSource.setBlacklist(cust.data.customer_id, on, reason.trim());
+            render();
+          } catch(e){ alert(e.message || e); }
+        };
+        const bOn = $("#blOn"), bOff = $("#blOff");
+        if(bOn)  bOn.onclick  = () => doBl(true);
+        if(bOff) bOff.onclick = () => doBl(false);
+
         const saveBtn = $("#sv_save");
         if(saveBtn) saveBtn.onclick = async () => {
           const vt = VISIT_TYPES[Number($("#sv_type").value)];
@@ -1224,6 +1304,8 @@ async function render(){
               parts: $("#sv_parts").value.trim(),
               chargeable: $("#sv_chg").value === "yes",
               amount: $("#sv_amt").value,
+              payStatus: $("#sv_pay") ? $("#sv_pay").value : "unpaid",
+              dueOn: $("#sv_due") ? $("#sv_due").value : null,
               note:  $("#sv_note").value.trim()
             });
 
