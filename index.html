@@ -131,6 +131,11 @@ tbody tr.row-bl td b{color:var(--red)}
 .sk-lg{height:82px}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 @media(prefers-reduced-motion:reduce){.sk{animation:none}}
+.claim.voided{opacity:.55}
+.claim.voided b{text-decoration:line-through}
+.lnk{background:none;border:0;color:var(--blue);font-size:.84rem;font-weight:600;
+  cursor:pointer;padding:0;margin-right:14px;text-decoration:underline}
+.lnk:hover{color:var(--blue-deep)}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:10px}
 .tab{background:#fff;border:1.5px solid var(--line);border-radius:5px;padding:9px 15px;
   font-size:.9rem;font-weight:600;color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:7px}
@@ -223,7 +228,9 @@ function rowFromView(v, service = [], claims = []) {
     custUnpaidAmount:  Number(v.cust_unpaid_amount || 0),
     blacklisted: v.blacklisted === true,
     blacklistReason: v.blacklist_reason || "",
-    service: service.map(s => ({ date:s.visit_date, type:s.visit_type,
+    service: service.map(s => ({ id:s.id, voided:s.voided === true,
+                                 voidReason:s.voided_reason || "", voidBy:s.voided_by || "",
+                                 date:s.visit_date, type:s.visit_type,
                                  tech:s.technician || "", note:s.notes || "",
                                  fault: s.is_fault_visit === true,
                                  parts: s.parts_replaced || "",
@@ -356,6 +363,28 @@ const DataSource = {
     if (error) throw error;
   },
 
+  async updateServiceVisit(id, v){
+    const { error } = await sb.rpc("update_service_visit", {
+      p_id: Number(id), p_visit_date: v.date, p_visit_type: v.type,
+      p_is_fault: v.fault === true, p_technician: v.tech || null,
+      p_parts: v.parts || null, p_chargeable: v.chargeable === true,
+      p_amount: v.amount != null && v.amount !== "" ? Number(v.amount) : null,
+      p_payment_status: v.payStatus || "unpaid",
+      p_due_on: v.dueOn || null, p_notes: v.note });
+    if (error) throw error;
+    clearListCache();
+  },
+  async voidServiceVisit(id, reason){
+    const { error } = await sb.rpc("void_service_visit", { p_id: Number(id), p_reason: reason });
+    if (error) throw error;
+    clearListCache();
+  },
+  async restoreServiceVisit(id){
+    const { error } = await sb.rpc("restore_service_visit", { p_id: Number(id) });
+    if (error) throw error;
+    clearListCache();
+  },
+
   async setBlacklist(customerId, on, reason){
     const { error } = await sb.rpc("set_blacklist", {
       p_customer_id: customerId, p_on: on, p_reason: reason });
@@ -463,6 +492,10 @@ const ZH = {
   "visits not settled":"次上门尚未结清","past the due date":"已过期限",
   "Check before booking another job.":"安排下一次服务前请先确认。",
   "Unpaid customers":"未付款客户","Open claim":"未结索赔",
+  "Edit":"修改","Remove":"删除","Removed":"已删除","Restore":"恢复",
+  "Removed by":"删除者","Cancel":"取消","Parts":"零件","Update visit":"更新记录",
+  "Why is this visit being removed?":"为什么要删除这条记录？",
+  "A reason is required.":"必须填写原因。",
   "repairs":"次维修","repair":"次维修"
 };
 const t = s => (LANG === "zh" && ZH[s]) ? ZH[s] : s;
@@ -531,7 +564,7 @@ const REPEAT_WINDOW_MONTHS = 12;
 function faultVisitsInWindow(service){
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - REPEAT_WINDOW_MONTHS);
-  return service.filter(s => s.fault && new Date(s.date + "T00:00:00") >= cutoff);
+  return service.filter(s => s.fault && !s.voided && new Date(s.date + "T00:00:00") >= cutoff);
 }
 
 const SKELETON = `<div class="page">
@@ -839,18 +872,23 @@ async function viewList(){
   </div>`;
 }
 
+let CURRENT_RECORD = null;   // set by viewDetail so handlers don't re-query
+
 async function viewDetail(id){
   const r = await DataSource.getById(id);
+  CURRENT_RECORD = r;
   if(!r) return `<div class="page"><div class="card empty">Record not found.</div></div>`;
   const c = coverage(r);
   const faults = faultVisitsInWindow(r.service);
   const repeatFlag = faults.length >= REPEAT_THRESHOLD;
 
   const svc = r.service.length ? r.service.slice().reverse().map(s => `
-    <div class="claim"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+    <div class="claim${s.voided ? " voided" : ""}" data-visit="${s.id}">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
       <b>${esc(s.type)}</b>
       <span style="display:flex;gap:6px;align-items:center">
-        ${s.fault ? `<span class="pill x">${t("Fault")}</span>` : ''}
+        ${s.voided ? `<span class="pill n">${t("Removed")}</span>` : ""}
+        ${s.fault && !s.voided ? `<span class="pill x">${t("Fault")}</span>` : ''}
         ${s.chargeable ? `<span class="pill ${
             s.payStatus === "paid" ? "g" :
             (s.dueOn && new Date(s.dueOn+"T00:00:00") < new Date()) ? "x" : "a"
@@ -859,7 +897,13 @@ async function viewDetail(id){
             s.payStatus === "partial" ? t("part paid") : t("unpaid")}</span>` : ''}
         <span class="src">${fmt(s.date)}</span></span></div>
       <div class="muted tiny">${esc(s.tech || "—")}${s.note ? " — " + esc(s.note) : ""}</div>
-      ${s.parts ? `<div class="muted tiny">Parts: ${esc(s.parts)}</div>` : ""}
+      ${s.parts ? `<div class="muted tiny">${t("Parts")}: ${esc(s.parts)}</div>` : ""}
+      ${s.voided
+        ? `<div class="tiny" style="color:var(--grey);margin-top:6px">${t("Removed by")} ${esc(s.voidBy)} — ${esc(s.voidReason)}
+             <button class="lnk" data-restore style="margin-left:10px">${t("Restore")}</button></div>`
+        : `<div class="tiny" style="margin-top:6px">
+             <button class="lnk" data-edit>${t("Edit")}</button>
+             <button class="lnk" data-void>${t("Remove")}</button></div>`}
     </div>`).join("")
     : `<div class="claim muted tiny">No service visits recorded.</div>`;
 
@@ -914,6 +958,8 @@ async function viewDetail(id){
         <input id="sv_note" placeholder="e.g. Checked thermostat, cleaned panel"></div>
       <div id="svErr"></div>
       <button class="btn btn-p" id="sv_save">${t("Save visit")}</button>
+      <button class="btn btn-s" id="sv_cancel" style="display:none;margin-left:8px">${t("Cancel")}</button>
+      <input type="hidden" id="sv_editing" value="">
     </div>`;
   const claims = r.claims.length ? r.claims.slice().reverse().map(cl => `
     <div class="claim"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
@@ -1479,7 +1525,12 @@ async function render(){
         app.innerHTML = await viewDetail(m[1]);
         const btn = $("#addSvc");
         const panel = $("#svcPanel");
-        if(btn && panel) btn.onclick = () => panel.classList.toggle("show");
+        if(btn && panel) btn.onclick = () => {
+          $("#sv_editing").value = "";
+          $("#sv_save").textContent = t("Save visit");
+          const cb = $("#sv_cancel"); if(cb) cb.style.display = "none";
+          panel.classList.toggle("show");
+        };
 
         const payRow = $("#sv_payrow"), chg = $("#sv_chg");
         const syncPay = () => {
@@ -1522,6 +1573,59 @@ async function render(){
         if(bOn)  bOn.onclick  = () => doBl(true);
         if(bOff) bOff.onclick = () => doBl(false);
 
+        /* Edit / remove / restore on each visit row.
+           Removing is a soft delete — the record stays, greyed out, with the
+           reason. Voided visits stop counting toward the repeat-repair alert
+           and the payment totals, but nobody can quietly erase a callback. */
+        document.querySelectorAll("[data-visit]").forEach(row => {
+          const vid = row.dataset.visit;
+          const v = (CURRENT_RECORD ? CURRENT_RECORD.service : [])
+                      .find(x => String(x.id) === String(vid));
+
+          const eb = row.querySelector("[data-edit]");
+          if(eb) eb.onclick = () => {
+            if(!v || !panel) return;
+            panel.classList.add("show");
+            $("#sv_editing").value = vid;
+            $("#sv_date").value  = v.date;
+            const ti = VISIT_TYPES.findIndex(x => x.v === v.type);
+            $("#sv_type").value  = ti >= 0 ? ti : 0;
+            $("#sv_tech").value  = v.tech || "";
+            $("#sv_parts").value = v.parts || "";
+            $("#sv_chg").value   = v.chargeable ? "yes" : "no";
+            $("#sv_amt").value   = v.amount ?? "";
+            syncPay();
+            if($("#sv_pay")) $("#sv_pay").value = v.payStatus === "not_applicable" ? "unpaid" : v.payStatus;
+            if($("#sv_due")) $("#sv_due").value = v.dueOn || "";
+            $("#sv_note").value  = v.note || "";
+            $("#sv_save").textContent = t("Update visit");
+            $("#sv_cancel").style.display = "";
+            panel.scrollIntoView({ behavior:"smooth", block:"center" });
+          };
+
+          const vb = row.querySelector("[data-void]");
+          if(vb) vb.onclick = async () => {
+            const reason = prompt(t("Why is this visit being removed?"));
+            if(!reason || reason.trim().length < 3){ alert(t("A reason is required.")); return; }
+            try { await DataSource.voidServiceVisit(vid, reason.trim()); render(); }
+            catch(e){ alert(e.message || e); }
+          };
+
+          const rb = row.querySelector("[data-restore]");
+          if(rb) rb.onclick = async () => {
+            try { await DataSource.restoreServiceVisit(vid); render(); }
+            catch(e){ alert(e.message || e); }
+          };
+        });
+
+        const cancelBtn = $("#sv_cancel");
+        if(cancelBtn) cancelBtn.onclick = () => {
+          $("#sv_editing").value = "";
+          $("#sv_save").textContent = t("Save visit");
+          cancelBtn.style.display = "none";
+          if(panel) panel.classList.remove("show");
+        };
+
         const saveBtn = $("#sv_save");
         if(saveBtn) saveBtn.onclick = async () => {
           const vt = VISIT_TYPES[Number($("#sv_type").value)];
@@ -1532,7 +1636,22 @@ async function render(){
             $("#svErr").innerHTML = `<div class="err">Please record what was done — this is what stops the same fault being guessed at twice.</div>`; return;
           }
           saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+          const editingId = $("#sv_editing").value;
           try{
+            if (editingId) {
+              await DataSource.updateServiceVisit(editingId, {
+                date:  $("#sv_date").value, type: vt.v, fault: vt.fault,
+                tech:  $("#sv_tech").value.trim(),
+                parts: $("#sv_parts").value.trim(),
+                chargeable: $("#sv_chg").value === "yes",
+                amount: $("#sv_amt").value,
+                payStatus: $("#sv_pay") ? $("#sv_pay").value : "unpaid",
+                dueOn: $("#sv_due") ? $("#sv_due").value : null,
+                note: $("#sv_note").value.trim()
+              });
+              render();
+              return;
+            }
             const updated = await DataSource.addServiceVisit(m[1], {
               date:  $("#sv_date").value,
               type:  vt.v,
