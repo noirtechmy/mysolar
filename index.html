@@ -218,6 +218,9 @@ function rowFromView(v, service = [], claims = []) {
     dealer: v.dealer_name || "", installer: v.installer || "",
     faultVisits: Number(v.fault_visits_12m || 0),
     unpaidVisits: Number(v.unpaid_visits || 0),
+    custUnpaidVisits:  Number(v.cust_unpaid_visits || 0),
+    custOverdueVisits: Number(v.cust_overdue_visits || 0),
+    custUnpaidAmount:  Number(v.cust_unpaid_amount || 0),
     blacklisted: v.blacklisted === true,
     blacklistReason: v.blacklist_reason || "",
     service: service.map(s => ({ date:s.visit_date, type:s.visit_type,
@@ -454,7 +457,13 @@ const ZH = {
   "Serial number":"机身号码","Dealer name":"经销商名称","Installed by":"安装人员",
   "Name":"姓名","Email":"电邮","Address":"地址",
   "months":"个月","days":"天","visits":"次",
-  "Fault":"故障","paid":"已付","part paid":"部分付款","unpaid":"未付"
+  "Fault":"故障","paid":"已付","part paid":"部分付款","unpaid":"未付",
+  "overdue":"逾期","Has unpaid":"有未付款","Overdue only":"只看逾期",
+  "This customer has unpaid work":"此客户有未付款项",
+  "visits not settled":"次上门尚未结清","past the due date":"已过期限",
+  "Check before booking another job.":"安排下一次服务前请先确认。",
+  "Unpaid customers":"未付款客户","Open claim":"未结索赔",
+  "repairs":"次维修","repair":"次维修"
 };
 const t = s => (LANG === "zh" && ZH[s]) ? ZH[s] : s;
 function setLang(l){ LANG = l; localStorage.setItem("mysolar_lang", l); render(); }
@@ -532,7 +541,7 @@ const SKELETON = `<div class="page">
 
 /* ---------- state ---------- */
 let USER = null;
-let FILTER = { q:"", status:"all", channel:"all", faults:"all" };
+let FILTER = { q:"", status:"all", channel:"all", faults:"all", pay:"all" };
 let FU_COUNT = 0;
 
 /* ---------- session security ----------
@@ -756,12 +765,14 @@ async function viewList(){
     warranty:  wc.filter(x=>x.c.state==="warranty").length,
     openClaims:wc.filter(x=>x.r.claims.some(c=>c.status==="open"||c.status==="in_progress")).length,
     repeats:   wc.filter(x=>x.r.faultVisits >= REPEAT_THRESHOLD).length,
-    unpaid:    wc.filter(x=>x.r.unpaidVisits > 0).length
+    unpaid:    wc.filter(x=>x.r.custUnpaidVisits > 0).length
   };
   const q = FILTER.q.toLowerCase();
   const shown = wc.filter(({r,c}) => {
     if(FILTER.status!=="all" && c.state!==FILTER.status) return false;
     if(FILTER.channel!=="all" && r.channel!==FILTER.channel) return false;
+    if(FILTER.pay==="unpaid"  && r.custUnpaidVisits < 1) return false;
+    if(FILTER.pay==="overdue" && r.custOverdueVisits < 1) return false;
     if(FILTER.faults==="1" && r.faultVisits < 1) return false;
     if(FILTER.faults==="2" && r.faultVisits < REPEAT_THRESHOLD) return false;
     if(!q) return true;
@@ -774,12 +785,16 @@ async function viewList(){
       <td><b>${esc(r.name)}</b><div class="src">${esc(r.area||"")}</div></td>
       <td>${esc(c.model.name.replace("MySolar ",""))}</td>
       <td class="mono">${fmt(r.installDate)}</td>
-      <td>${pill(c)}${r.claims.length ? ' <span class="pill a">Open claim</span>' : ""}${
-        r.blacklisted ? ' <span class="pill x">${t("Blacklisted")}</span>' : ""}${
+      <td>${pill(c)}${r.claims.length ? ` <span class="pill a">${t("Open claim")}</span>` : ""}${
+        r.blacklisted ? ` <span class="pill x">${t("Blacklisted")}</span>` : ""}${
+        r.custUnpaidVisits > 0
+          ? ` <span class="pill ${r.custOverdueVisits > 0 ? "x" : "a"}">${
+              r.custUnpaidAmount > 0 ? "RM " + r.custUnpaidAmount.toFixed(0) + " " : ""}${
+              r.custOverdueVisits > 0 ? t("overdue") : t("unpaid")}</span>` : ""}${
         r.faultVisits >= REPEAT_THRESHOLD
-          ? ` <span class="pill x">${r.faultVisits} repairs</span>`
-          : r.faultVisits === 1 ? ' <span class="pill a">1 repair</span>' : ""}</td>
-      <td><span class="pill ${r.channel==="direct"?"g":"n"}">${r.channel==="direct"?"Direct":"Dealer"}</span>
+          ? ` <span class="pill x">${r.faultVisits} ${t("repairs")}</span>`
+          : r.faultVisits === 1 ? ` <span class="pill a">1 ${t("repair")}</span>` : ""}</td>
+      <td><span class="pill ${r.channel==="direct"?"g":"n"}">${r.channel==="direct"?t("Direct"):t("Dealer")}</span>
         ${r.dealer?`<div class="src">${esc(r.dealer)}</div>`:""}</td>
     </tr>`).join("")
     : `<tr><td colspan="6" class="empty">${counts.total===0
@@ -797,7 +812,7 @@ async function viewList(){
       <div class="stat"><b style="color:var(--blue)">${counts.warranty}</b><span>${t("Under tank warranty")}</span></div>
       <div class="stat"><b style="color:var(--amber)">${counts.openClaims}</b><span>${t("Open claims")}</span></div>
       <div class="stat"><b style="color:var(--red)">${counts.repeats}</b><span>${t("Repeat repairs")}</span></div>
-      <div class="stat"><b style="color:var(--amber)">${counts.unpaid}</b><span>${t("Unpaid visits")}</span></div>
+      <div class="stat"><b style="color:var(--amber)">${counts.unpaid}</b><span>${t("Unpaid customers")}</span></div>
     </div>
     <div class="toolbar">
       <div class="field grow"><label for="q">${t("Search")}</label>
@@ -808,6 +823,10 @@ async function viewList(){
       <div class="field"><label for="fc">${t("Sold via")}</label>
         <select id="fc"><option value="all">All</option><option value="direct">Direct</option>
         <option value="dealer">Dealer</option></select></div>
+      <div class="field"><label for="fp">${t("Payment")}</label>
+        <select id="fp"><option value="all">${t("All")}</option>
+        <option value="unpaid">${t("Has unpaid")}</option>
+        <option value="overdue">${t("Overdue only")}</option></select></div>
       <div class="field"><label for="ff">${t("Repairs")}</label>
         <select id="ff"><option value="all">All</option>
         <option value="1">1 or more</option>
@@ -909,9 +928,19 @@ async function viewDetail(id){
       <div><h1>${esc(r.name)}</h1>
         <div class="src">${esc(r.warrantyNo)}${r.serial?" · "+esc(r.serial):""}</div></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap">${pill(c)}
-        ${r.blacklisted ? '<span class="pill x">${t("Blacklisted")}</span>' : ''}
+        ${r.blacklisted ? `<span class="pill x">${t("Blacklisted")}</span>` : ""}
         <span class="pill ${r.channel==="direct"?"g":"n"}">${r.channel==="direct"?t("Sold direct"):t("Via dealer")}</span></div>
     </div>
+    ${r.custUnpaidVisits > 0 ? `<div class="card" style="background:${
+        r.custOverdueVisits > 0 ? "var(--red-bg);border-color:#F0C7C2" : "var(--amber-bg);border-color:#EFD9AE"};margin-bottom:18px">
+      <div class="card-pad">
+        <b style="color:var(--${r.custOverdueVisits > 0 ? "red" : "amber"})">${t("This customer has unpaid work")}${
+          r.custUnpaidAmount > 0 ? ` — RM ${r.custUnpaidAmount.toFixed(2)}` : ""}</b>
+        <div class="tiny" style="color:var(--${r.custOverdueVisits > 0 ? "red" : "amber"})">${
+          r.custUnpaidVisits} ${t("visits not settled")}${
+          r.custOverdueVisits > 0 ? ` · ${r.custOverdueVisits} ${t("past the due date")}` : ""}. ${
+          t("Check before booking another job.")}</div>
+      </div></div>` : ""}
     ${r.blacklisted ? `<div class="card" style="background:var(--red-bg);border-color:#F0C7C2;margin-bottom:18px">
       <div class="card-pad" style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center">
         <div><b style="color:var(--red)">${t("This customer is blacklisted")}</b>
@@ -1548,20 +1577,22 @@ async function render(){
         const refresh = async () => {
           FILTER.q = $("#q").value; FILTER.status = $("#fs").value;
           FILTER.channel = $("#fc").value; FILTER.faults = $("#ff").value;
+          FILTER.pay = $("#fp").value;
           const pos = $("#q").selectionStart;
           app.innerHTML = await viewList();
           $("#fs").value = FILTER.status; $("#fc").value = FILTER.channel;
-          $("#ff").value = FILTER.faults;
+          $("#ff").value = FILTER.faults; $("#fp").value = FILTER.pay;
           $("#q").focus(); $("#q").setSelectionRange(pos,pos);
           wire();
         };
         $("#q").oninput = refresh; $("#fs").onchange = refresh;
         $("#fc").onchange = refresh; $("#ff").onchange = refresh;
+        $("#fp").onchange = refresh;
         document.querySelectorAll("#tb tr[data-id]").forEach(tr =>
           tr.onclick = () => location.hash = "#/admin/" + tr.dataset.id);
       };
       $("#fs").value = FILTER.status; $("#fc").value = FILTER.channel;
-      $("#ff").value = FILTER.faults;
+      $("#ff").value = FILTER.faults; $("#fp").value = FILTER.pay;
       wire();
     }catch(e){
       app.innerHTML = `<div class="page"><div class="err">
