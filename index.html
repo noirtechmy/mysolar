@@ -131,6 +131,11 @@ tbody tr.row-bl td b{color:var(--red)}
 .sk-lg{height:82px}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 @media(prefers-reduced-motion:reduce){.sk{animation:none}}
+.pager{display:flex;justify-content:space-between;align-items:center;gap:14px;
+  flex-wrap:wrap;margin-top:14px}
+.pgbtns{display:flex;align-items:center;gap:10px}
+.pgbtns .btn{padding:8px 16px;font-size:.88rem}
+.pgbtns .btn[disabled]{opacity:.45;cursor:default}
 .claim.voided{opacity:.55}
 .claim.voided b{text-decoration:line-through}
 .lnk{background:none;border:0;color:var(--blue);font-size:.84rem;font-weight:600;
@@ -273,6 +278,28 @@ const DataSource = {
       if (data.length < size) break;
     }
     return out;
+  },
+
+  /* Server-side search. The browser now receives only the page it shows,
+     so load time stops depending on how many records exist. */
+  async searchWarranties(filter, page, perPage){
+    const { data, error } = await sb.rpc("search_installations", {
+      p_query:   filter.q || "",
+      p_status:  filter.status  || "all",
+      p_channel: filter.channel || "all",
+      p_faults:  filter.faults  || "all",
+      p_pay:     filter.pay     || "all",
+      p_limit:   perPage,
+      p_offset:  page * perPage
+    });
+    if (error) throw error;
+    return { total: data.total || 0, rows: (data.rows || []).map(v => rowFromView(v, [], [])) };
+  },
+
+  async registryStats(){
+    const { data, error } = await sb.rpc("registry_stats");
+    if (error) throw error;
+    return data || {};
   },
 
   async listWarranties(force = false){
@@ -511,6 +538,11 @@ const ZH = {
   "Edit":"修改","Remove":"删除","Removed":"已删除","Restore":"恢复",
   "Removed by":"删除者","Cancel":"取消","Parts":"零件","Update visit":"更新记录",
   "Why is this visit being removed?":"为什么要删除这条记录？",
+  "Previous":"上一页","Next":"下一页","Page":"第","Showing":"显示","of":"／共",
+  "1 or more":"1次以上","2 or more (flagged)":"2次以上（已标记）",
+  "No installations registered yet.":"还没有登记任何安装记录。",
+  "No records match those filters.":"没有符合条件的记录。",
+  "Name, warranty no, serial, phone, area, dealer":"姓名、保修号、机身号、电话、地区、经销商",
   "A reason is required.":"必须填写原因。",
   "repairs":"次维修","repair":"次维修"
 };
@@ -805,28 +837,25 @@ function viewLogin(){
 }
 
 /* ---------- registry ---------- */
+let PAGE = 0;
+const PER_PAGE = 50;
+let SEARCH_TIMER = null;
+
 async function viewList(){
-  const rows = await DataSource.listWarranties();
-  const wc = rows.map(r => ({ r, c:coverage(r) }));
+  // Stats and the current page load together rather than one after the other.
+  const [stats, res] = await Promise.all([
+    DataSource.registryStats(),
+    DataSource.searchWarranties(FILTER, PAGE, PER_PAGE)
+  ]);
+
   const counts = {
-    total: wc.length,
-    guarantee: wc.filter(x=>x.c.state==="guarantee").length,
-    warranty:  wc.filter(x=>x.c.state==="warranty").length,
-    openClaims:wc.filter(x=>x.r.claims.some(c=>c.status==="open"||c.status==="in_progress")).length,
-    repeats:   wc.filter(x=>x.r.faultVisits >= REPEAT_THRESHOLD).length,
-    unpaid:    wc.filter(x=>x.r.custUnpaidVisits > 0).length
+    total: stats.total || 0, guarantee: stats.guarantee || 0,
+    warranty: stats.warranty || 0, openClaims: stats.openClaims || 0,
+    repeats: stats.repeats || 0, unpaid: stats.unpaid || 0
   };
-  const q = FILTER.q.toLowerCase();
-  const shown = wc.filter(({r,c}) => {
-    if(FILTER.status!=="all" && c.state!==FILTER.status) return false;
-    if(FILTER.channel!=="all" && r.channel!==FILTER.channel) return false;
-    if(FILTER.pay==="unpaid"  && r.custUnpaidVisits < 1) return false;
-    if(FILTER.pay==="overdue" && r.custOverdueVisits < 1) return false;
-    if(FILTER.faults==="1" && r.faultVisits < 1) return false;
-    if(FILTER.faults==="2" && r.faultVisits < REPEAT_THRESHOLD) return false;
-    if(!q) return true;
-    return [r.warrantyNo,r.serial,r.name,r.phone,r.area,r.dealer].join(" ").toLowerCase().includes(q);
-  });
+
+  const shown = res.rows.map(r => ({ r, c: coverage(r) }));
+  const pages = Math.max(1, Math.ceil(res.total / PER_PAGE));
 
   const body = shown.length ? shown.map(({r,c}) => `
     <tr data-id="${r.id}" class="${r.blacklisted ? "row-bl" : ""}">
@@ -834,7 +863,7 @@ async function viewList(){
       <td><b>${esc(r.name)}</b><div class="src">${esc(r.area||"")}</div></td>
       <td>${esc(c.model.name.replace("MySolar ",""))}</td>
       <td class="mono">${fmt(r.installDate)}</td>
-      <td>${pill(c)}${r.claims.length ? ` <span class="pill a">${t("Open claim")}</span>` : ""}${
+      <td>${pill(c)}${
         r.blacklisted ? ` <span class="pill x">${t("Blacklisted")}</span>` : ""}${
         r.custUnpaidVisits > 0
           ? ` <span class="pill ${r.custOverdueVisits > 0 ? "x" : "a"}">${
@@ -847,8 +876,8 @@ async function viewList(){
         ${r.dealer?`<div class="src">${esc(r.dealer)}</div>`:""}</td>
     </tr>`).join("")
     : `<tr><td colspan="6" class="empty">${counts.total===0
-        ? "No installations registered yet.<br><span class='tiny'>Use “Register an installation” to add the first one.</span>"
-        : "No records match those filters."}</td></tr>`;
+        ? t("No installations registered yet.")
+        : t("No records match those filters.")}</td></tr>`;
 
   return `<div class="page">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px">
@@ -865,30 +894,36 @@ async function viewList(){
     </div>
     <div class="toolbar">
       <div class="field grow"><label for="q">${t("Search")}</label>
-        <input id="q" placeholder="Name, warranty no, serial, phone, area, dealer" value="${esc(FILTER.q)}"></div>
+        <input id="q" placeholder="${t("Name, warranty no, serial, phone, area, dealer")}" value="${esc(FILTER.q)}"></div>
       <div class="field"><label for="fs">${t("Status")}</label>
-        <select id="fs"><option value="all">All</option><option value="guarantee">Under guarantee</option>
-        <option value="warranty">Under tank warranty</option><option value="expired">Expired</option></select></div>
+        <select id="fs"><option value="all">${t("All")}</option><option value="guarantee">${t("Under guarantee")}</option>
+        <option value="warranty">${t("Under tank warranty")}</option><option value="expired">${t("Expired")}</option></select></div>
       <div class="field"><label for="fc">${t("Sold via")}</label>
-        <select id="fc"><option value="all">All</option><option value="direct">Direct</option>
-        <option value="dealer">Dealer</option></select></div>
+        <select id="fc"><option value="all">${t("All")}</option><option value="direct">${t("Direct")}</option>
+        <option value="dealer">${t("Dealer")}</option></select></div>
       <div class="field"><label for="fp">${t("Payment")}</label>
         <select id="fp"><option value="all">${t("All")}</option>
         <option value="unpaid">${t("Has unpaid")}</option>
         <option value="overdue">${t("Overdue only")}</option></select></div>
       <div class="field"><label for="ff">${t("Repairs")}</label>
-        <select id="ff"><option value="all">All</option>
-        <option value="1">1 or more</option>
-        <option value="2">2 or more (flagged)</option></select></div>
+        <select id="ff"><option value="all">${t("All")}</option>
+        <option value="1">${t("1 or more")}</option>
+        <option value="2">${t("2 or more (flagged)")}</option></select></div>
     </div>
     <div class="tablewrap"><table>
       <thead><tr><th>${t("Warranty no")}</th><th>${t("Customer")}</th><th>${t("Model")}</th><th>${t("Installed")}</th><th>${t("Status")}</th><th>${t("Channel")}</th></tr></thead>
       <tbody id="tb">${body}</tbody></table></div>
-    <p class="tiny muted" style="margin-top:12px">Showing ${shown.length} of ${counts.total}. Click any row to open the record.</p>
+    <div class="pager">
+      <span class="tiny muted">${res.total === 0 ? "" :
+        `${t("Showing")} ${PAGE*PER_PAGE+1}–${Math.min((PAGE+1)*PER_PAGE, res.total)} ${t("of")} ${res.total}`}</span>
+      ${pages > 1 ? `<span class="pgbtns">
+        <button class="btn btn-s" id="pgPrev" ${PAGE===0?"disabled":""}>${t("Previous")}</button>
+        <span class="tiny muted">${t("Page")} ${PAGE+1} / ${pages}</span>
+        <button class="btn btn-s" id="pgNext" ${PAGE>=pages-1?"disabled":""}>${t("Next")}</button>
+      </span>` : ""}
+    </div>
   </div>`;
 }
-
-let CURRENT_RECORD = null;   // set by viewDetail so handlers don't re-query
 
 async function viewDetail(id){
   const r = await DataSource.getById(id);
@@ -1709,20 +1744,34 @@ async function render(){
 
       app.innerHTML = await viewList();
       const wire = () => {
-        const refresh = async () => {
-          FILTER.q = $("#q").value; FILTER.status = $("#fs").value;
-          FILTER.channel = $("#fc").value; FILTER.faults = $("#ff").value;
-          FILTER.pay = $("#fp").value;
-          const pos = $("#q").selectionStart;
+        const redraw = async () => {
+          // Capture focus state BEFORE the redraw — afterwards the old input
+          // is detached and the check would always be false.
+          const box = $("#q");
+          const hadFocus = box === document.activeElement;
+          const pos = box ? box.selectionStart : 0;
           app.innerHTML = await viewList();
           $("#fs").value = FILTER.status; $("#fc").value = FILTER.channel;
           $("#ff").value = FILTER.faults; $("#fp").value = FILTER.pay;
-          $("#q").focus(); $("#q").setSelectionRange(pos,pos);
+          if(hadFocus){
+            const nb = $("#q");
+            if(nb){ nb.focus(); nb.setSelectionRange(pos, pos); }
+          }
           wire();
         };
-        $("#q").oninput = refresh; $("#fs").onchange = refresh;
-        $("#fc").onchange = refresh; $("#ff").onchange = refresh;
-        $("#fp").onchange = refresh;
+        // Typing no longer fires a query per keystroke — it waits until the
+        // person pauses, which matters a lot once the search runs server-side.
+        $("#q").oninput = () => {
+          FILTER.q = $("#q").value; PAGE = 0;
+          clearTimeout(SEARCH_TIMER);
+          SEARCH_TIMER = setTimeout(redraw, 300);
+        };
+        [["fs","status"],["fc","channel"],["ff","faults"],["fp","pay"]].forEach(([id,key]) => {
+          $("#"+id).onchange = () => { FILTER[key] = $("#"+id).value; PAGE = 0; redraw(); };
+        });
+        const pp = $("#pgPrev"), pn = $("#pgNext");
+        if(pp) pp.onclick = () => { if(PAGE>0){ PAGE--; redraw(); } };
+        if(pn) pn.onclick = () => { PAGE++; redraw(); };
         document.querySelectorAll("#tb tr[data-id]").forEach(tr =>
           tr.onclick = () => location.hash = "#/admin/" + tr.dataset.id);
       };
