@@ -191,7 +191,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
    NOTIFY_SECRET you set in its Script Properties.
    Leave NOTIFY_URL empty to switch notifications off entirely. */
 const NOTIFY_URL    = "https://script.google.com/macros/s/AKfycbwfmIWaA5lGVIcBXbvomSQjx6eElS3IgKoZe-sPvyppo9B7-530ZMBPw4sWJ3Uyj9Bx/exec";
-const NOTIFY_SECRET = "mysolar-notify-7fk29x";
+const NOTIFY_SECRET = "PASTE_YOUR_NOTIFY_SECRET_HERE";   /* <-- must match NOTIFY_SECRET in Apps Script Script Properties */
 
 /* Fire-and-forget. Never blocks the user, never breaks the app if it fails.
    Uses no-cors + text/plain so the browser sends it without a preflight
@@ -1470,11 +1470,18 @@ async function render(){
             : "Why is the blacklist being removed?");
           if(!reason || reason.trim().length < 3){ alert("A reason is required."); return; }
           try {
+            // Load the record BEFORE changing anything — `r` in this scope is the
+            // route string ("#/admin/5"), not the customer, which is why the
+            // first version of this email arrived with every field undefined.
+            const rec = await DataSource.getById(m[1]);
             const cust = await sb.from("installations").select("customer_id").eq("id", m[1]).single();
             await DataSource.setBlacklist(cust.data.customer_id, on, reason.trim());
             notify("blacklist_changed", {
-              customer_name: r.name, phone: r.phone, area: r.area,
-              warranty_no:   r.warrantyNo,
+              customer_name: rec ? rec.name : "(unknown)",
+              phone:         rec ? rec.phone : "",
+              area:          rec ? rec.area : "",
+              warranty_no:   rec ? rec.warrantyNo : "",
+              model:         rec && MODELS[rec.model] ? MODELS[rec.model].name : "",
               action:        on ? "added" : "removed",
               reason:        reason.trim(),
               staff:         USER?.email || "staff"
