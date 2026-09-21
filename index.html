@@ -223,6 +223,7 @@ function rowFromView(v, service = [], claims = []) {
     dealer: v.dealer_name || "", installer: v.installer || "",
     faultVisits: Number(v.fault_visits_12m || 0),
     unpaidVisits: Number(v.unpaid_visits || 0),
+    customerId: v.customer_id,
     custUnpaidVisits:  Number(v.cust_unpaid_visits || 0),
     custOverdueVisits: Number(v.cust_overdue_visits || 0),
     custUnpaidAmount:  Number(v.cust_unpaid_amount || 0),
@@ -249,7 +250,16 @@ function rowFromView(v, service = [], claims = []) {
    cache — the registry was being re-downloaded on every keystroke. */
 let LIST_CACHE = { rows: null, at: 0 };
 const CACHE_MS = 60000;
-const clearListCache = () => { LIST_CACHE = { rows: null, at: 0 }; };
+
+/* One record, briefly cached. Saving a visit used to fetch the same record
+   twice — once to return it, once when the page re-rendered. */
+let REC_CACHE = { id: null, row: null, at: 0 };
+const REC_MS = 20000;
+
+const clearListCache = () => {
+  LIST_CACHE = { rows: null, at: 0 };
+  REC_CACHE  = { id: null, row: null, at: 0 };
+};
 
 const DataSource = {
   async _fetchAllInstallations(){
@@ -280,15 +290,21 @@ const DataSource = {
     return mapped;
   },
 
-  async getById(id){
-    const { data: v, error } = await sb.from("v_installations")
-      .select("*").eq("id", id).single();
-    if (error || !v) return null;
-    const [{ data: svc }, { data: cl }] = await Promise.all([
+  async getById(id, force = false){
+    if (!force && REC_CACHE.row && String(REC_CACHE.id) === String(id)
+        && Date.now() - REC_CACHE.at < REC_MS) {
+      return REC_CACHE.row;
+    }
+    // All three in one go rather than the view first, then the rest.
+    const [vRes, svcRes, clRes] = await Promise.all([
+      sb.from("v_installations").select("*").eq("id", id).single(),
       sb.from("service_visits").select("*").eq("installation_id", id).order("visit_date"),
       sb.from("claims").select("*").eq("installation_id", id).order("raised_on")
     ]);
-    return rowFromView(v, svc || [], cl || []);
+    if (vRes.error || !vRes.data) return null;
+    const row = rowFromView(vRes.data, svcRes.data || [], clRes.data || []);
+    REC_CACHE = { id, row, at: Date.now() };
+    return row;
   },
 
   async findForCustomer(warrantyNo, phone){
@@ -318,7 +334,7 @@ const DataSource = {
     });
     if (error) throw error;
     clearListCache();
-    return await this.getById(data);
+    return await this.getById(data, true);
   },
 
   async addServiceVisit(id, visit){
@@ -339,7 +355,7 @@ const DataSource = {
     });
     if (error) throw error;
     clearListCache();
-    return await this.getById(id);
+    return await this.getById(id, true);
   },
 
   async listRules(){
@@ -1550,12 +1566,12 @@ async function render(){
             : "Why is the blacklist being removed?");
           if(!reason || reason.trim().length < 3){ alert("A reason is required."); return; }
           try {
-            // Load the record BEFORE changing anything — `r` in this scope is the
-            // route string ("#/admin/5"), not the customer, which is why the
-            // first version of this email arrived with every field undefined.
-            const rec = await DataSource.getById(m[1]);
-            const cust = await sb.from("installations").select("customer_id").eq("id", m[1]).single();
-            await DataSource.setBlacklist(cust.data.customer_id, on, reason.trim());
+            // `r` in this scope is the route string ("#/admin/5"), not the
+            // customer — which is why the first version of this email arrived
+            // with every field undefined. CURRENT_RECORD is already loaded,
+            // and carries customerId, so no extra queries are needed here.
+            const rec = CURRENT_RECORD || await DataSource.getById(m[1]);
+            await DataSource.setBlacklist(rec.customerId, on, reason.trim());
             notify("blacklist_changed", {
               customer_name: rec ? rec.name : "(unknown)",
               phone:         rec ? rec.phone : "",
