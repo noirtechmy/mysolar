@@ -562,6 +562,30 @@ const ZH = {
   "Edit":"修改","Remove":"删除","Removed":"已删除","Restore":"恢复",
   "Removed by":"删除者","Cancel":"取消","Parts":"零件","Update visit":"更新记录",
   "Why is this visit being removed?":"为什么要删除这条记录？",
+  // Labels stored in the database, so they arrive in English and are
+  // translated at display time like everything else.
+  "Service visit due":"保养到期","Warranty ends within a year":"一年内保修到期",
+  "Repeated repairs on the same unit":"同一台机重复维修","Payment overdue":"付款逾期",
+  "Claim still open":"索赔未结","Courtesy call after installation":"安装后关怀电话",
+  "Guarantee ending soon":"保证期即将结束","No service visit on record":"无维修记录",
+  "Unpaid visits before blacklisting":"列入黑名单前的未付次数",
+  "Days before a payment counts as overdue":"逾期天数认定",
+  "Default payment terms (days)":"预设付款期限（天）",
+  "How many overdue service payments before a customer is automatically flagged.":"多少次逾期未付后自动列入黑名单。",
+  "A payment is only counted once it is this many days past its due date.":"付款超过期限这么多天后才算逾期。",
+  "Due date is set this many days after the visit unless changed.":"上门后多少天为付款期限，可自行更改。",
+  "Months after installation":"安装后几个月","Months since the last visit":"距上次上门几个月",
+  "Months before warranty ends":"保修结束前几个月","Months before guarantee ends":"保证期结束前几个月",
+  "Days a claim stays open":"索赔未结天数","Fault visits needed":"故障上门次数",
+  "Days past the due date":"超过付款期限天数",
+  "Registered to":"登记人","Capacity":"容量","Serial number":"机身号码","Installed":"安装日期",
+  "Tank steel":"内胆材质","Copper tubes / panel":"铜管／集热板","Channel":"来源",
+  "Installed by":"安装人员","Service history":"维修记录","Staff sign in":"员工登入",
+  "No — under warranty":"否 — 保修内","Yes — customer charged":"是 — 向客户收费",
+  "Not paid yet":"尚未付款","Partly paid":"部分付款","Paid in full":"已付清",
+  "Guarantee":"保证期","Tank warranty":"保修期","Guarantee ends":"保证期至",
+  "Tank warranty ends":"保修期至","yr":"年","Stay signed in":"保持登入",
+  "Signing you out shortly for security.":"为了安全，系统即将自动登出。",
   "All systems":"全部系统","Repeated repairs":"重复维修","Owe money":"欠款客户",
   "Out of warranty":"已过保修","More filters":"更多筛选","Clear all":"清除",
   "Warranty status":"保修状态","Customers & Systems":"客户与系统",
@@ -620,7 +644,9 @@ function coverage(row){
     pctGuarantee:Math.round(daysBetween(start,gEnd)/total*100),
     daysLeft:Math.max(daysBetween(now,wEnd),0) };
 }
-const pill = c => `<span class="pill ${c.cls}">${c.label}</span>`;
+/* coverage() returns English labels; translate at the point of display so
+   the status pills follow the language toggle like everything else. */
+const pill = c => `<span class="pill ${c.cls}">${t(c.label)}</span>`;
 
 /* Visit types. `fault` decides whether a visit counts toward the
    repeat-repair alert. Routine servicing must never count — two annual
@@ -706,7 +732,7 @@ function showIdleWarning(secsLeft){
   d.id = "idleWarn";
   d.className = "idlewarn";
   d.innerHTML = `Signing you out in about ${Math.ceil(secsLeft/60)} minute(s) for security.
-    <button class="btn btn-s" style="padding:7px 14px;font-size:.86rem;margin-left:10px">Stay signed in</button>`;
+    <button class="btn btn-s" style="padding:7px 14px;font-size:.86rem;margin-left:10px">${t("Stay signed in")}</button>`;
   d.querySelector("button").onclick = () => { lastActivity = Date.now(); d.remove(); };
   document.body.appendChild(d);
 }
@@ -836,14 +862,14 @@ function customerCard(row){
         ? "Warranty ended "+fmt(c.wEnd) : c.daysLeft+" days remaining"}</span></div>
     </div>
     <dl class="kv">
-      <dt>Registered to</dt><dd>${esc(row.name)}</dd>
-      <dt>Capacity</dt><dd>${c.model.litres} L · ${c.model.gallons} gal</dd>
-      <dt>Serial number</dt><dd>${esc(row.serial||"—")}</dd>
-      <dt>Installed</dt><dd>${fmt(row.installDate)}</dd>
-      <dt>Guarantee (${c.model.guaranteeYears} yr)</dt><dd>${fmt(c.gEnd)}</dd>
-      <dt>Tank warranty (${c.model.warrantyYears} yr)</dt><dd>${fmt(c.wEnd)}</dd>
+      <dt>${t("Registered to")}</dt><dd>${esc(row.name)}</dd>
+      <dt>${t("Capacity")}</dt><dd>${c.model.litres} L · ${c.model.gallons} gal</dd>
+      <dt>${t("Serial number")}</dt><dd>${esc(row.serial||"—")}</dd>
+      <dt>${t("Installed")}</dt><dd>${fmt(row.installDate)}</dd>
+      <dt>${t("Guarantee")} (${c.model.guaranteeYears} ${t("yr")})</dt><dd>${fmt(c.gEnd)}</dd>
+      <dt>${t("Tank warranty")} (${c.model.warrantyYears} ${t("yr")})</dt><dd>${fmt(c.wEnd)}</dd>
     </dl>
-    <div class="svc"><h3 style="margin-bottom:9px">Service history</h3>${svc}</div>
+    <div class="svc"><h3 style="margin-bottom:9px">${t("Service history")}</h3>${svc}</div>
     <div class="card-pad" style="border-top:1px solid var(--line)">
       <a class="btn btn-p btn-full" target="_blank" rel="noopener"
         href="https://wa.me/60123180048?text=${encodeURIComponent("Hi MySolar, I'd like to ask about warranty "+row.warrantyNo+".")}">
@@ -854,7 +880,7 @@ function customerCard(row){
 /* ---------- staff sign in ---------- */
 function viewLogin(){
   return `<div class="page narrow"><div class="card card-pad">
-    <h2>Staff sign in</h2>
+    <h2>${t("Staff sign in")}</h2>
     <p class="tiny muted">Accounts are created in Supabase under Authentication → Users.</p>
     ${AUTH_MSG ? `<div class="ok" style="background:var(--tint);color:var(--blue-deep);border-color:var(--line)">${esc(AUTH_MSG)}</div>` : ""}
     <div id="loginErr"></div>
@@ -1029,17 +1055,17 @@ async function viewDetail(id){
       </div>
       <div class="row2">
         <div class="field"><label for="sv_chg">${t("Chargeable")}</label>
-          <select id="sv_chg"><option value="no">No — under warranty</option>
-                              <option value="yes">Yes — customer charged</option></select></div>
+          <select id="sv_chg"><option value="no">${t("No — under warranty")}</option>
+                              <option value="yes">${t("Yes — customer charged")}</option></select></div>
         <div class="field"><label for="sv_amt">${t("Amount (RM)")}</label>
           <input id="sv_amt" type="number" step="0.01" placeholder="0.00"></div>
       </div>
       <div class="row2" id="sv_payrow" style="display:none">
         <div class="field"><label for="sv_pay">${t("Payment")}</label>
           <select id="sv_pay">
-            <option value="unpaid">Not paid yet</option>
-            <option value="partial">Partly paid</option>
-            <option value="paid">Paid in full</option>
+            <option value="unpaid">${t("Not paid yet")}</option>
+            <option value="partial">${t("Partly paid")}</option>
+            <option value="paid">${t("Paid in full")}</option>
           </select></div>
         <div class="field"><label for="sv_due">${t("Payment due by")}</label>
           <input id="sv_due" type="date"></div>
@@ -1093,13 +1119,13 @@ async function viewDetail(id){
               <i style="width:${c.pctElapsed}%;opacity:.55"></i></div>
             <div class="barlbl"><span>${fmt(r.installDate)}</span><span>${fmt(c.wEnd)}</span></div></div>
           <dl class="kv" style="padding-top:6px">
-            <dt>Model</dt><dd>${esc(c.model.name)}</dd>
-            <dt>Capacity</dt><dd>${c.model.litres} L · ${c.model.gallons} gal · ${esc(c.model.pax)} pax</dd>
-            <dt>Tank steel</dt><dd>${esc(c.model.steel)}</dd>
-            <dt>Copper tubes / panel</dt><dd>${c.model.tubes} · ${esc(c.model.panel)}</dd>
-            <dt>Installed</dt><dd>${fmt(r.installDate)}</dd>
-            <dt>Guarantee ends (${c.model.guaranteeYears} yr)</dt><dd>${fmt(c.gEnd)}</dd>
-            <dt>Tank warranty ends (${c.model.warrantyYears} yr)</dt><dd>${fmt(c.wEnd)}</dd>
+            <dt>${t("Model")}</dt><dd>${esc(c.model.name)}</dd>
+            <dt>${t("Capacity")}</dt><dd>${c.model.litres} L · ${c.model.gallons} gal · ${esc(c.model.pax)} pax</dd>
+            <dt>${t("Tank steel")}</dt><dd>${esc(c.model.steel)}</dd>
+            <dt>${t("Copper tubes / panel")}</dt><dd>${c.model.tubes} · ${esc(c.model.panel)}</dd>
+            <dt>${t("Installed")}</dt><dd>${fmt(r.installDate)}</dd>
+            <dt>${t("Guarantee ends")} (${c.model.guaranteeYears} ${t("yr")})</dt><dd>${fmt(c.gEnd)}</dd>
+            <dt>${t("Tank warranty ends")} (${c.model.warrantyYears} ${t("yr")})</dt><dd>${fmt(c.wEnd)}</dd>
           </dl></div>
         <div class="card"><div class="sec-h">
           <span>${t("Service history")}${faults.length ? ` <span class="pill ${repeatFlag?"x":"a"}">${faults.length} fault${faults.length===1?"":"s"} / ${REPEAT_WINDOW_MONTHS}mth</span>` : ""}</span>
@@ -1110,10 +1136,10 @@ async function viewDetail(id){
       <div style="display:flex;flex-direction:column;gap:18px">
         <div class="card"><div class="sec-h">${t("Customer")}</div>
           <dl class="kv">
-            <dt>Name</dt><dd>${esc(r.name)}</dd>
-            <dt>Phone</dt><dd>${esc(r.phone)}</dd>
-            <dt>Email</dt><dd style="word-break:break-all">${esc(r.email||"—")}</dd>
-            <dt>Area</dt><dd>${esc(r.area||"—")}</dd></dl>
+            <dt>${t("Name")}</dt><dd>${esc(r.name)}</dd>
+            <dt>${t("Phone")}</dt><dd>${esc(r.phone)}</dd>
+            <dt>${t("Email")}</dt><dd style="word-break:break-all">${esc(r.email||"—")}</dd>
+            <dt>${t("Area")}</dt><dd>${esc(r.area||"—")}</dd></dl>
           <div class="card-pad" style="border-top:1px solid var(--line);padding-top:14px">
             <div class="tiny muted">Installation address</div>
             <div style="font-size:.92rem">${esc(r.address||"—")}</div></div>
@@ -1123,9 +1149,9 @@ async function viewDetail(id){
         </div>
         <div class="card"><div class="sec-h">${t("Origin")}</div>
           <dl class="kv">
-            <dt>Channel</dt><dd>${r.channel==="direct"?"Direct":"Dealer"}</dd>
-            <dt>Dealer</dt><dd>${esc(r.dealer||"—")}</dd>
-            <dt>Installed by</dt><dd>${esc(r.installer||"—")}</dd></dl></div>
+            <dt>${t("Channel")}</dt><dd>${r.channel==="direct"?"Direct":"Dealer"}</dd>
+            <dt>${t("Dealer")}</dt><dd>${esc(r.dealer||"—")}</dd>
+            <dt>${t("Installed by")}</dt><dd>${esc(r.installer||"—")}</dd></dl></div>
       </div>
     </div></div>`;
 }
@@ -1136,7 +1162,7 @@ function viewNew(){
   return `<div class="page narrow">
     <button class="crumb" onclick="location.hash='#/admin/list'">&larr; ${t("Back to registry")}</button>
     <div class="card card-pad">
-      <h2>Register an installation</h2>
+      <h2>${t("Register an installation")}</h2>
       <p class="tiny muted">Warranty number is generated by the database.</p>
       <div id="nErr"></div>
       <div class="field"><label for="n_name">${t("Customer name")}</label><input id="n_name"></div>
@@ -1152,7 +1178,7 @@ function viewNew(){
         <div class="field"><label for="n_serial">${t("Serial number")}</label><input id="n_serial" placeholder="Optional"></div></div>
       <div class="row2">
         <div class="field"><label for="n_channel">${t("Sold via")}</label>
-          <select id="n_channel"><option value="direct">Direct</option><option value="dealer">Dealer</option></select></div>
+          <select id="n_channel"><option value="direct">${t("Direct")}</option><option value="dealer">${t("Dealer")}</option></select></div>
         <div class="field"><label for="n_dealer">${t("Dealer name")}</label><input id="n_dealer" placeholder="Blank if direct"></div></div>
       <div class="field"><label for="n_installer">${t("Installed by")}</label><input id="n_installer"></div>
 
@@ -1293,8 +1319,8 @@ async function viewSettings(){
 
   const setRows = settings.map(s => `
     <tr data-setting="${esc(s.key)}">
-      <td><b>${esc(s.label)}</b>
-        <div class="src" style="text-transform:none;letter-spacing:0">${esc(s.description || "")}</div></td>
+      <td><b>${esc(t(s.label))}</b>
+        <div class="src" style="text-transform:none;letter-spacing:0">${esc(t(s.description || ""))}</div></td>
       <td style="width:150px"><input data-val type="number" min="0" value="${esc(s.value)}"></td>
       <td style="width:110px"><button class="btn btn-s" data-savesetting
           style="padding:8px 14px;font-size:.85rem">${t("Save")}</button></td>
