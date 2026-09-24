@@ -225,7 +225,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
    NOTIFY_SECRET you set in its Script Properties.
    Leave NOTIFY_URL empty to switch notifications off entirely. */
 const NOTIFY_URL    = "https://script.google.com/macros/s/AKfycbwfmIWaA5lGVIcBXbvomSQjx6eElS3IgKoZe-sPvyppo9B7-530ZMBPw4sWJ3Uyj9Bx/exec";
-const NOTIFY_SECRET = "mysolar-notify-7fk29x";   /* <-- must match NOTIFY_SECRET in Apps Script Script Properties */
+const NOTIFY_SECRET = "PASTE_YOUR_NOTIFY_SECRET_HERE";   /* <-- must match NOTIFY_SECRET in Apps Script Script Properties */
 
 /* Fire-and-forget. Never blocks the user, never breaks the app if it fails.
    Uses no-cors + text/plain so the browser sends it without a preflight
@@ -347,13 +347,18 @@ const DataSource = {
       return REC_CACHE.row;
     }
     // All three in one go rather than the view first, then the rest.
-    const [vRes, svcRes, clRes] = await Promise.all([
+    const [vRes, svcRes, clRes, mRes, fRes] = await Promise.all([
       sb.from("v_installations").select("*").eq("id", id).single(),
       sb.from("service_visits").select("*").eq("installation_id", id).order("visit_date"),
-      sb.from("claims").select("*").eq("installation_id", id).order("raised_on")
+      sb.from("claims").select("*").eq("installation_id", id).order("raised_on"),
+      sb.from("v_maintenance").select("*").eq("installation_id", id).order("sort_order"),
+      sb.from("installations").select("has_filter,filter_install_date").eq("id", id).single()
     ]);
     if (vRes.error || !vRes.data) return null;
     const row = rowFromView(vRes.data, svcRes.data || [], clRes.data || []);
+    row.maintenance = mRes.data || [];
+    row.hasFilter   = fRes.data ? fRes.data.has_filter === true : false;
+    row.filterDate  = fRes.data ? (fRes.data.filter_install_date || "") : "";
     REC_CACHE = { id, row, at: Date.now() };
     return row;
   },
@@ -381,7 +386,9 @@ const DataSource = {
       p_model_code:p.model, p_serial_no:p.serial || null,
       p_install_date:p.installDate, p_channel:p.channel,
       p_dealer_name:p.dealer || null, p_installer:p.installer || null,
-      p_consent: p.consent === true, p_notice_ver: 'v1'
+      p_consent: p.consent === true, p_notice_ver: 'v1',
+      p_historical: p.historical === true,
+      p_warranty_no: p.warrantyNo || null
     });
     if (error) throw error;
     clearListCache();
@@ -407,6 +414,50 @@ const DataSource = {
     if (error) throw error;
     clearListCache();
     return await this.getById(id, true);
+  },
+
+  /* ---- maintenance schedule ---- */
+
+  async markMaintenanceDone(itemId, date, notes){
+    const { error } = await sb.rpc("mark_maintenance_done", {
+      p_id: itemId, p_date: date, p_notes: notes || null
+    });
+    if (error) throw error;
+    clearListCache();
+  },
+
+  async setMaintenanceInterval(itemId, months){
+    const { error } = await sb.rpc("set_maintenance_interval", {
+      p_id: itemId, p_months: Number(months)
+    });
+    if (error) throw error;
+    clearListCache();
+  },
+
+  async setInstallationFilter(installationId, on, filterDate){
+    const { error } = await sb.rpc("set_installation_filter", {
+      p_installation_id: installationId,
+      p_has_filter: on === true,
+      p_filter_date: filterDate || null
+    });
+    if (error) throw error;
+    clearListCache();
+  },
+
+  async listMaintenanceTasks(){
+    const { data, error } = await sb.from("maintenance_tasks")
+      .select("*").order("sort_order");
+    if (error) throw error;
+    return data || [];
+  },
+
+  async saveMaintenanceTask(code, months, recurring, advance, active){
+    const { error } = await sb.rpc("update_maintenance_task", {
+      p_code: code, p_months: Number(months),
+      p_recurring: recurring === true, p_advance: Number(advance),
+      p_active: active === true
+    });
+    if (error) throw error;
   },
 
   async listRules(){
@@ -596,7 +647,45 @@ const ZH = {
   "No records match those filters.":"没有符合条件的记录。",
   "Name, warranty no, serial, phone, area, dealer":"姓名、保修号、机身号、电话、地区、经销商",
   "A reason is required.":"必须填写原因。",
-  "repairs":"次维修","repair":"次维修"
+  "repairs":"次维修","repair":"次维修",
+
+  /* maintenance schedule */
+  "Maintenance schedule":"保养计划",
+  "Maintenance reminders":"保养提醒",
+  "No maintenance items.":"没有保养项目。",
+  "Mark as done":"标记为已完成",
+  "Every":"每",
+  "last done":"上次完成",
+  "never done":"从未进行",
+  "Not applicable":"不适用",
+  "Overdue by":"已逾期",
+  "Due today":"今天到期",
+  "Due in":"距离到期还有",
+  "Task":"项目",
+  "Every (months)":"间隔（月）",
+  "Repeats":"重复",
+  "Warn (days before)":"提前提醒（天）",
+  "On":"启用",
+  "Solar water heater":"太阳能热水器",
+  "Water filter":"滤水器",
+  "Customer also has a Crystal Clean water filter":"客户也安装了 Crystal Clean 滤水器",
+  "Filter installed on":"滤水器安装日期",
+  "Leave blank if it went in with the heater.":"如与热水器同日安装，可留空。",
+  "Changing the number of months applies to units registered from now on. Units already in the system keep their own setting, which can be changed on each record.":"更改月数只适用于日后登记的机组。已在系统中的机组保留各自的设定，可在每笔记录中单独修改。",
+
+  /* historical record entry */
+  "This is an old record from our files, not a new installation.":"这是从旧档案输入的记录，不是新安装。",
+  "Existing warranty number":"原有保修号",
+  "Leave blank to generate a new one":"留空则自动生成新号码",
+  "Warranty number is generated automatically.":"保修号由系统自动生成。",
+  "No privacy notice will be recorded for this record.":"此记录不会登记隐私声明。",
+  "That is correct for an old record — nobody read this customer the notice today. They will appear on the list of customers still to be told, and it can be recorded next time they are in contact.":"对旧记录而言这是正确的 —— 今天并没有人向这位客户宣读声明。该客户会出现在「尚未告知」名单中，下次联系时再登记即可。",
+  "Register & generate warranty":"登记并生成保修号",
+  "The customer has been shown the":"客户已阅读",
+  "privacy notice":"隐私声明",
+  "and agrees to MySolar keeping these details for warranty and service purposes.":"并同意 MySolar 保留这些资料用于保修与售后服务。",
+  "The customer must be shown the privacy notice and agree before their details can be saved.":"必须先向客户出示隐私声明并获得同意，才能保存其资料。",
+  "Name, phone and install date are required.":"必须填写姓名、电话和安装日期。"
 };
 const t = s => (LANG === "zh" && ZH[s]) ? ZH[s] : s;
 function setLang(l){ LANG = l; localStorage.setItem("mysolar_lang", l); render(); }
@@ -990,6 +1079,73 @@ async function viewList(){
   </div>`;
 }
 
+/* ---------- maintenance schedule ---------- */
+/* Plain language on purpose. "Overdue by 40 days" is read faster than a date
+   the reader has to compare against today in their head. */
+function maintLabel(m){
+  const raw = (LANG === "zh" && m.label_zh) ? m.label_zh : m.label;
+  return String(raw).replace(/ due$/i, "");
+}
+
+function maintStatus(m){
+  if(!m.active)                 return { cls:"n", text:t("Not applicable") };
+  const over = Number(m.days_overdue), until = Number(m.days_until);
+  if(over > 0)                  return { cls:"x", text:`${t("Overdue by")} ${over} ${t("days")}` };
+  if(over === 0)                return { cls:"x", text:t("Due today") };
+  if(m.state === "soon")        return { cls:"a", text:`${t("Due in")} ${until} ${t("days")}` };
+  return { cls:"n", text:fmt(m.next_due_date) };
+}
+
+function maintCard(r){
+  const today = new Date().toISOString().slice(0,10);
+
+  const rows = (r.maintenance || []).map(m => {
+    const st = maintStatus(m);
+    return `<div class="claim${m.active ? "" : " voided"}" data-maint="${m.id}">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+        <b>${esc(maintLabel(m))}</b>
+        <span class="pill ${st.cls}">${esc(st.text)}</span>
+      </div>
+      <div class="muted tiny" style="margin-top:4px">
+        ${t("Every")}
+        <input data-interval type="number" min="1" max="240" value="${esc(m.interval_months)}"
+               style="width:62px;padding:3px 6px;margin:0 4px;font-size:.85rem">
+        ${t("months")} ·
+        ${m.last_done_date ? `${t("last done")} ${fmt(m.last_done_date)}` : t("never done")}
+      </div>
+      ${m.active ? `<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+        <input data-donedate type="date" value="${today}" max="${today}"
+               style="width:auto;padding:5px 8px;font-size:.85rem">
+        <button class="btn btn-s" data-done
+                style="padding:5px 12px;font-size:.85rem">${t("Mark as done")}</button>
+      </div>` : ""}
+    </div>`;
+  }).join("");
+
+  return `<div class="card"><div class="sec-h">${t("Maintenance schedule")}</div>
+    ${rows || `<div class="claim muted tiny">${t("No maintenance items.")}</div>`}
+    <div class="card-pad" style="border-top:1px solid var(--line)">
+      <label style="display:flex;gap:10px;align-items:center;font-family:var(--body);
+                    font-size:.93rem;letter-spacing:0;text-transform:none;color:var(--ink);
+                    cursor:pointer;margin:0">
+        <input type="checkbox" id="mFilter" ${r.hasFilter ? "checked" : ""}
+               style="width:18px;height:18px;flex:none">
+        <span>${t("Customer also has a Crystal Clean water filter")}</span>
+      </label>
+      <div id="mFilterRow" style="margin-top:10px;${r.hasFilter ? "" : "display:none"}">
+        <div class="field" style="margin:0">
+          <label for="mFilterDate">${t("Filter installed on")}</label>
+          <input id="mFilterDate" type="date" value="${esc(r.filterDate || "")}"
+                 max="${today}">
+          <div class="src" style="text-transform:none;letter-spacing:0;margin-top:4px">
+            ${t("Leave blank if it went in with the heater.")}</div>
+        </div>
+      </div>
+      <div id="mFilterMsg"></div>
+    </div>
+  </div>`;
+}
+
 async function viewDetail(id){
   const r = await DataSource.getById(id);
   CURRENT_RECORD = r;
@@ -1131,7 +1287,7 @@ async function viewDetail(id){
           <span>${t("Service history")}${faults.length ? ` <span class="pill ${repeatFlag?"x":"a"}">${faults.length} fault${faults.length===1?"":"s"} / ${REPEAT_WINDOW_MONTHS}mth</span>` : ""}</span>
           <button class="btn btn-s" style="padding:6px 12px;font-size:.85rem" id="addSvc">${t("Log a visit")}</button></div>
           ${repeatBanner}${svcForm}${svc}</div>
-
+        ${maintCard(r)}
       </div>
       <div style="display:flex;flex-direction:column;gap:18px">
         <div class="card"><div class="sec-h">${t("Customer")}</div>
@@ -1163,8 +1319,17 @@ function viewNew(){
     <button class="crumb" onclick="location.hash='#/admin/list'">&larr; ${t("Back to registry")}</button>
     <div class="card card-pad">
       <h2>${t("Register an installation")}</h2>
-      <p class="tiny muted">Warranty number is generated by the database.</p>
+      <p class="tiny muted">${t("Warranty number is generated automatically.")}</p>
       <div id="nErr"></div>
+
+      <div class="consent" style="background:var(--tint);margin:0 0 18px">
+        <label style="display:flex;gap:10px;align-items:flex-start;font-family:var(--body);
+                      font-size:.93rem;letter-spacing:0;text-transform:none;color:var(--ink);
+                      cursor:pointer;margin:0">
+          <input type="checkbox" id="n_hist" style="width:18px;height:18px;margin-top:2px;flex:none">
+          <span>${t("This is an old record from our files, not a new installation.")}</span>
+        </label>
+      </div>
       <div class="field"><label for="n_name">${t("Customer name")}</label><input id="n_name"></div>
       <div class="row2">
         <div class="field"><label for="n_phone">${t("Phone")}</label><input id="n_phone" placeholder="012-345 6789"></div>
@@ -1176,24 +1341,35 @@ function viewNew(){
       <div class="row2">
         <div class="field"><label for="n_model">${t("Model")}</label><select id="n_model">${opts}</select></div>
         <div class="field"><label for="n_serial">${t("Serial number")}</label><input id="n_serial" placeholder="Optional"></div></div>
+      <div class="field" id="n_wnrow" style="display:none">
+        <label for="n_wn">${t("Existing warranty number")}</label>
+        <input id="n_wn" placeholder="${t("Leave blank to generate a new one")}">
+      </div>
       <div class="row2">
         <div class="field"><label for="n_channel">${t("Sold via")}</label>
           <select id="n_channel"><option value="direct">${t("Direct")}</option><option value="dealer">${t("Dealer")}</option></select></div>
         <div class="field"><label for="n_dealer">${t("Dealer name")}</label><input id="n_dealer" placeholder="Blank if direct"></div></div>
       <div class="field"><label for="n_installer">${t("Installed by")}</label><input id="n_installer"></div>
 
-      <div class="consent">
+      <div class="consent" id="n_consentrow">
         <label style="display:flex;gap:10px;align-items:flex-start;font-family:var(--body);
                       font-size:.93rem;letter-spacing:0;text-transform:none;color:var(--ink);
                       cursor:pointer;margin:0">
           <input type="checkbox" id="n_consent" style="width:18px;height:18px;margin-top:2px;flex:none">
-          <span>The customer has been shown the
-            <a href="#/privacy" target="_blank">privacy notice</a>
-            and agrees to MySolar keeping these details for warranty and service purposes.</span>
+          <span>${t("The customer has been shown the")}
+            <a href="#/privacy" target="_blank">${t("privacy notice")}</a>
+            ${t("and agrees to MySolar keeping these details for warranty and service purposes.")}</span>
         </label>
       </div>
 
-      <button class="btn btn-p btn-full" id="nGo">Register &amp; generate warranty</button>
+      <div class="consent" id="n_histnote" style="display:none;background:var(--amber-bg);border-color:#EFD9AE">
+        <div style="font-family:var(--body);font-size:.93rem;letter-spacing:0;text-transform:none;color:var(--amber)">
+          <b>${t("No privacy notice will be recorded for this record.")}</b>
+          <div style="margin-top:4px">${t("That is correct for an old record — nobody read this customer the notice today. They will appear on the list of customers still to be told, and it can be recorded next time they are in contact.")}</div>
+        </div>
+      </div>
+
+      <button class="btn btn-p btn-full" id="nGo">${t("Register & generate warranty")}</button>
     </div></div>`;
 }
 
@@ -1286,13 +1462,37 @@ const RULE_UNITS = {
   months_before_guarantee_end: { unit:"months", help:"Months before guarantee ends" },
   days_claim_open:             { unit:"days",   help:"Days a claim stays open" },
   fault_visit_count:           { unit:"visits", help:"Fault visits needed", window:true },
-  payment_overdue_days:        { unit:"days",   help:"Days past the due date" }
+  payment_overdue_days:        { unit:"days",   help:"Days past the due date" },
+  maintenance_due:             { unit:"days",   help:"Days of warning before the due date" }
 };
 
 async function viewSettings(){
-  const [rules, settings] = await Promise.all([
-    DataSource.listRules(), DataSource.listSettings()
+  const [allRules, settings, tasks] = await Promise.all([
+    DataSource.listRules(), DataSource.listSettings(), DataSource.listMaintenanceTasks()
   ]);
+
+  /* Maintenance reminders get their own section below, so they are not also
+     listed here — one setting in two places is how they end up disagreeing. */
+  const rules = allRules.filter(r => r.trigger_type !== "maintenance_due");
+
+  const taskRows = tasks.map(k => `
+    <tr data-task="${esc(k.code)}">
+      <td><b>${esc(LANG === "zh" && k.label_zh ? k.label_zh : String(k.label).replace(/ due$/i,""))}</b>
+        <div class="src" style="text-transform:none;letter-spacing:0">${
+          k.applies_to === "filter" ? t("Water filter") : t("Solar water heater")}</div></td>
+      <td style="width:130px"><input data-months type="number" min="1" max="240"
+          value="${esc(k.default_interval_months)}"></td>
+      <td style="width:100px;text-align:center">
+        <input data-recurring type="checkbox" ${k.recurring ? "checked" : ""}
+               style="width:17px;height:17px"></td>
+      <td style="width:130px"><input data-advance type="number" min="0" max="365"
+          value="${esc(k.advance_notice_days)}"></td>
+      <td style="width:80px;text-align:center">
+        <input data-taskactive type="checkbox" ${k.active ? "checked" : ""}
+               style="width:17px;height:17px"></td>
+      <td style="width:110px"><button class="btn btn-s" data-savetask
+          style="padding:8px 14px;font-size:.85rem">${t("Save")}</button></td>
+    </tr>`).join("");
 
   const ruleRows = rules.map(r => {
     const u = RULE_UNITS[r.trigger_type] || { unit:"", help:"" };
@@ -1339,6 +1539,23 @@ async function viewSettings(){
         <tbody id="ruleBody">${ruleRows}</tbody></table></div>
     </div>
 
+    <div class="card" style="margin-bottom:22px">
+      <div class="sec-h">${t("Maintenance reminders")}</div>
+      <div class="tablewrap" style="border:0;border-radius:0"><table>
+        <thead><tr>
+          <th>${t("Task")}</th>
+          <th>${t("Every (months)")}</th>
+          <th style="text-align:center">${t("Repeats")}</th>
+          <th>${t("Warn (days before)")}</th>
+          <th style="text-align:center">${t("On")}</th>
+          <th></th></tr></thead>
+        <tbody id="taskBody">${taskRows}</tbody></table></div>
+      <div class="card-pad" style="border-top:1px solid var(--line)">
+        <p class="tiny muted" style="margin:0">
+          ${t("Changing the number of months applies to units registered from now on. Units already in the system keep their own setting, which can be changed on each record.")}</p>
+      </div>
+    </div>
+
     <div class="card">
       <div class="sec-h">${t("Blacklist & payments")}</div>
       <div class="tablewrap" style="border:0;border-radius:0"><table>
@@ -1372,6 +1589,23 @@ function wireSettings(){
     };
   });
 
+  document.querySelectorAll("#taskBody tr[data-task]").forEach(tr => {
+    tr.querySelector("[data-savetask]").onclick = async (e) => {
+      const b = e.target; b.disabled = true; b.textContent = "…";
+      try {
+        await DataSource.saveMaintenanceTask(
+          tr.dataset.task,
+          tr.querySelector("[data-months]").value,
+          tr.querySelector("[data-recurring]").checked,
+          tr.querySelector("[data-advance]").value,
+          tr.querySelector("[data-taskactive]").checked
+        );
+        msg(`<div class="ok">${t("Saved.")}</div>`);
+      } catch(err){ msg(`<div class="err">${esc(err.message || err)}</div>`); }
+      b.disabled = false; b.textContent = t("Save");
+    };
+  });
+
   document.querySelectorAll("#setBody tr[data-setting]").forEach(tr => {
     tr.querySelector("[data-savesetting]").onclick = async (e) => {
       const b = e.target; b.disabled = true; b.textContent = "…";
@@ -1402,6 +1636,14 @@ const WA_TEMPLATES = {
     `Hi ${r.customer_name}, this is MySolar. We noticed your system has needed attention more than once recently. We'd like to send a senior technician to look at it properly rather than keep changing parts. When would suit you?`,
   payment_overdue: r =>
     `Hi ${r.customer_name}, this is MySolar. We noticed a service payment is still outstanding. Could you let us know when it will be settled? Happy to send the invoice again if needed.`,
+  maint_anode: r =>
+    `Hi ${r.customer_name}, this is MySolar. The anode on your solar water heater (${r.warranty_no}) is due for replacement. Replacing it on time is what keeps the tank from corroding. Would you like us to arrange a visit?`,
+  maint_nrv: r =>
+    `Hi ${r.customer_name}, this is MySolar. The non-return valve on your system (${r.warranty_no}) is due for replacement. Would you like us to arrange a visit?`,
+  maint_flush: r =>
+    `Hi ${r.customer_name}, this is MySolar. Your solar water heater (${r.warranty_no}) is due for flushing. This clears out sediment and keeps the system heating efficiently. Would you like us to arrange a visit?`,
+  maint_backwash: r =>
+    `Hi ${r.customer_name}, this is MySolar. Your Crystal Clean water filter is due for a back wash. Would you like us to arrange a visit?`,
   claim_stale: r =>
     `Hi ${r.customer_name}, this is MySolar following up on the issue you reported. Sorry for the delay — we'd like to get this sorted for you. When would suit for a visit?`
 };
@@ -1599,13 +1841,24 @@ async function render(){
 
       if(r === "#/admin/new"){
         app.innerHTML = viewNew();
+
+        const hist = $("#n_hist");
+        const syncHist = () => {
+          const on = hist.checked;
+          $("#n_wnrow").style.display      = on ? "" : "none";
+          $("#n_consentrow").style.display = on ? "none" : "";
+          $("#n_histnote").style.display   = on ? "" : "none";
+        };
+        hist.onchange = syncHist; syncHist();
+
         $("#nGo").onclick = async () => {
           const v = id => $("#"+id).value.trim();
+          const isHist = $("#n_hist").checked;
           if(!v("n_name") || !v("n_phone") || !v("n_date")){
-            $("#nErr").innerHTML = `<div class="err">Name, phone and install date are required.</div>`; return;
+            $("#nErr").innerHTML = `<div class="err">${t("Name, phone and install date are required.")}</div>`; return;
           }
-          if(!$("#n_consent").checked){
-            $("#nErr").innerHTML = `<div class="err">The customer must be shown the privacy notice and agree before their details can be saved.</div>`; return;
+          if(!isHist && !$("#n_consent").checked){
+            $("#nErr").innerHTML = `<div class="err">${t("The customer must be shown the privacy notice and agree before their details can be saved.")}</div>`; return;
           }
           const btn = $("#nGo"); btn.disabled = true; btn.textContent = "Saving…";
           try{
@@ -1613,7 +1866,10 @@ async function render(){
               name:v("n_name"), phone:v("n_phone"), email:v("n_email"), address:v("n_addr"),
               area:v("n_area"), installDate:v("n_date"), model:$("#n_model").value,
               serial:v("n_serial"), channel:$("#n_channel").value,
-              dealer:v("n_dealer"), installer:v("n_installer"), consent:true
+              dealer:v("n_dealer"), installer:v("n_installer"),
+              consent: !isHist,
+              historical: isHist,
+              warrantyNo: isHist ? v("n_wn") : null
             });
             notify("installation_registered", {
               customer_name: row.name,
@@ -1658,6 +1914,49 @@ async function render(){
           }
         };
         if(chg){ chg.onchange = syncPay; syncPay(); }
+
+        /* ---- maintenance schedule ---- */
+        document.querySelectorAll("[data-maint]").forEach(el => {
+          const itemId  = Number(el.dataset.maint);
+          const doneBtn = el.querySelector("[data-done]");
+          const iv      = el.querySelector("[data-interval]");
+
+          if(doneBtn) doneBtn.onclick = async () => {
+            doneBtn.disabled = true; doneBtn.textContent = "…";
+            try{
+              const d = el.querySelector("[data-donedate]");
+              await DataSource.markMaintenanceDone(itemId, d ? d.value : null);
+              render();
+            }catch(e){
+              alert(e.message || e);
+              doneBtn.disabled = false; doneBtn.textContent = t("Mark as done");
+            }
+          };
+
+          if(iv) iv.onchange = async () => {
+            try{ await DataSource.setMaintenanceInterval(itemId, iv.value); render(); }
+            catch(e){ alert(e.message || e); }
+          };
+        });
+
+        const mf = $("#mFilter");
+        if(mf){
+          const saveFilter = async () => {
+            const row = $("#mFilterRow");
+            if(row) row.style.display = mf.checked ? "" : "none";
+            const box = $("#mFilterMsg"), fd = $("#mFilterDate");
+            try{
+              await DataSource.setInstallationFilter(
+                Number(m[1]), mf.checked, mf.checked && fd ? (fd.value || null) : null);
+              if(box) box.innerHTML = `<div class="ok" style="margin-top:10px">${t("Saved.")}</div>`;
+              setTimeout(render, 700);
+            }catch(e){
+              if(box) box.innerHTML = `<div class="err" style="margin-top:10px">${esc(e.message || e)}</div>`;
+            }
+          };
+          mf.onchange = saveFilter;
+          const fd = $("#mFilterDate"); if(fd) fd.onchange = saveFilter;
+        }
 
         const doBl = async (on) => {
           const reason = prompt(on
